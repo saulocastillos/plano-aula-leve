@@ -19,9 +19,10 @@
     "@vitejs/plugin-react": "^5.1.0",
     "electron": "^39.2.3",
     "electron-builder": "^26.0.12",
+    "esbuild": "^0.28.0",
     "vite": "^8.0.10",
     "vite-plugin-electron": "^0.29.0",
-    "vite-plugin-electron-renderer": "^0.15.0"
+    "vite-plugin-electron-renderer": "^0.14.0"
   },
   "build": {
     "appId": "com.profe.desktop",
@@ -38,13 +39,30 @@
       {
         "from": "templates",
         "to": "templates"
+      },
+      {
+        "from": "instrucoes",
+        "to": "instrucoes"
       }
     ],
     "extraMetadata": {
       "main": "dist-electron/main.js"
     },
     "win": {
-      "target": "nsis"
+      "signAndEditExecutable": false,
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false
     }
   }
 }

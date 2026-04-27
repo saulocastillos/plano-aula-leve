@@ -5,7 +5,12 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { extractPptxText } from "./services/pptx.js";
 import { fillTemplate } from "./services/docx-template.js";
 import { generatePlanData } from "./services/openai-plan.js";
-import { getDefaultInputDir, getDefaultOutputDir, getProjectPaths } from "./services/paths.js";
+import {
+  getDefaultInputDir,
+  getDefaultOutputDir,
+  getProjectPaths,
+  seedBundledResources
+} from "./services/paths.js";
 import {
   DEFAULT_INSTRUCTION_FILE_NAME,
   ensureDefaultInstructionFile,
@@ -251,6 +256,7 @@ async function createMainWindow() {
 ipcMain.handle("app:get-state", async () => {
   let settings = await readSettings();
   const projectPaths = getProjectPaths(settings);
+  seedBundledResources(projectPaths);
   await ensureDefaultInstructionFile(projectPaths.instrucoesDir);
   const files = await fs.readdir(projectPaths.entradasDir, { withFileTypes: true });
   const instructions = await listInstructions(projectPaths.instrucoesDir);
@@ -473,6 +479,7 @@ ipcMain.handle("plans:generate", async (_event, payload) => {
 
   const settings = await readSettings();
   const projectPaths = getProjectPaths(settings);
+  seedBundledResources(projectPaths);
   if (!settings.apiKey) {
     throw new Error("Configure a OpenAI API key antes de gerar o plano.");
   }
