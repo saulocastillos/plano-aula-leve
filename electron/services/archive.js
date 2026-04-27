@@ -21,10 +21,12 @@ export async function extractOfficeArchive(filePath, prefix) {
   const tempDir = await makeTempDir(prefix);
 
   if (process.platform === "win32") {
+    const tempZipPath = path.join(tempDir, `${prefix}.zip`);
+    await fs.copyFile(filePath, tempZipPath);
     await run("powershell.exe", [
       "-NoProfile",
       "-Command",
-      `Expand-Archive -LiteralPath '${filePath.replace(/'/g, "''")}' -DestinationPath '${tempDir.replace(/'/g, "''")}' -Force`
+      `Expand-Archive -LiteralPath '${tempZipPath.replace(/'/g, "''")}' -DestinationPath '${tempDir.replace(/'/g, "''")}' -Force`
     ]);
   } else {
     await run("unzip", ["-qq", filePath, "-d", tempDir]);

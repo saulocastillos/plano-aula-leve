@@ -17,18 +17,22 @@ async function m(e, t, n = {}) {
 async function h(n) {
 	return e.mkdtemp(t.join(c.tmpdir(), `${n}-`));
 }
-async function g(e, t) {
-	let n = await h(t);
-	return process.platform === "win32" ? await m("powershell.exe", [
-		"-NoProfile",
-		"-Command",
-		`Expand-Archive -LiteralPath '${e.replace(/'/g, "''")}' -DestinationPath '${n.replace(/'/g, "''")}' -Force`
-	]) : await m("unzip", [
+async function g(n, r) {
+	let i = await h(r);
+	if (process.platform === "win32") {
+		let a = t.join(i, `${r}.zip`);
+		await e.copyFile(n, a), await m("powershell.exe", [
+			"-NoProfile",
+			"-Command",
+			`Expand-Archive -LiteralPath '${a.replace(/'/g, "''")}' -DestinationPath '${i.replace(/'/g, "''")}' -Force`
+		]);
+	} else await m("unzip", [
 		"-qq",
-		e,
+		n,
 		"-d",
-		n
-	]), n;
+		i
+	]);
+	return i;
 }
 async function _(n, r) {
 	let i = t.resolve(r);

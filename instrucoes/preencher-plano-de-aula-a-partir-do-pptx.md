@@ -79,73 +79,80 @@ Esta instrução deve ser executada de forma idempotente.
 - Se o template tiver erro estrutural, como um campo apontando para a âncora errada, corrigir isso apenas no arquivo gerado.
 - Não transformar a resposta em transcrição dos slides; consolidar e escrever o plano de aula em formato final de uso.
 - Manter o processo determinístico sempre que possível: mesmos insumos devem levar ao mesmo mapeamento, mesmo nome de arquivo e mesma estrutura de saída.
+- A quantidade de aulas informada na interface NÃO deve ser usada para gerar, expandir ou reduzir o conteúdo das aulas.
+
+## Regra crítica — quantidade de aulas vs conteúdo
+
+- O número de blocos de aula (Aula 1, Aula 2, etc.) deve ser exatamente igual ao número de arquivos `.pptx`.
+- O campo “quantidade de aulas” é apenas informativo no template.
+- Nunca criar aulas adicionais com base nesse campo.
+
+## Regra crítica — título das aulas
+
+- O título de cada aula deve ser derivado do nome do arquivo `.pptx`.
+- Remover apenas a extensão `.pptx`.
+- Aplicar normalização leve obrigatória:
+  - corrigir ortografia;
+  - corrigir acentuação;
+  - ajustar maiúsculas e minúsculas;
+  - corrigir espaçamentos;
+  - padronizar separadores (usar " - " quando necessário).
+- Não é permitido:
+  - resumir;
+  - reescrever;
+  - substituir palavras;
+  - interpretar o conteúdo para gerar novo título.
 
 ## Preenchimento com múltiplas aulas (2 ou 3 `.pptx`)
 
-Quando o plano consolidar 2 ou 3 aulas num único template, os campos de conteúdo e desenvolvimento devem organizar o material por aula dentro do mesmo bloco, usando o padrão:
+Quando o plano consolidar múltiplas aulas num único template, os campos de conteúdo e desenvolvimento devem organizar o material por aula dentro do mesmo bloco, usando o padrão:
 
-```
-Aula [N] – [Tema da aula]
-[conteúdo ou descrição da aula N]
+Aula 1 – [título normalizado do pptx]
 
-Aula [N+1] – [Tema da aula]
-[conteúdo ou descrição da aula N+1]
-```
+[conteúdo ou descrição da aula 1]
 
-Isso se aplica a qualquer âncora cujo campo agrupe conteúdo de múltiplas aulas (ex.: conteúdos, desenvolvimento/estratégias, atividades desenvolvidas). Campos que não variam por aula (professor, turmas, disciplina, recursos, avaliação) são preenchidos uma única vez para o conjunto.
+Aula 2 – [título normalizado do pptx]
+
+[conteúdo ou descrição da aula 2]
+
+Regras obrigatórias:
+
+- A quantidade de blocos de aula deve corresponder exclusivamente ao número de arquivos `.pptx`.
+- Cada `.pptx` gera exatamente uma aula.
+- A ordem das aulas deve seguir a ordem de entrada dos arquivos.
+
+Campos que não variam por aula (professor, turmas, disciplina, recursos, avaliação) são preenchidos uma única vez.
 
 ## Defaults permitidos quando faltarem dados
 
-- `PROFESSOR`: usar o valor configurado na interface; se não houver, `A definir`
-- `PERÍODO DE REALIZAÇÃO`: usar informação objetiva do material; se não houver, `conforme calendário escolar`
-- `Quantidade de Aulas`: usar o valor configurado na interface; se não houver, inferir pelo número de `.pptx` apenas se for seguro; caso contrário, `A definir`
+- PROFESSOR: valor da interface; se não houver, "A definir"
+- PERÍODO DE REALIZAÇÃO: informação do material; se não houver, "conforme calendário escolar"
+- Quantidade de Aulas: valor da interface
 
 ## Critérios de redação por campo
 
-Identificar o tipo de cada campo pela âncora e pelo label no template, e aplicar o critério correspondente:
-
-- **Tema / título da aula**: escrever um tema específico, claro e diretamente ligado ao recorte da aula. Para múltiplas aulas, cada uma recebe seu próprio tema no bloco.
-- **Conteúdos**: desdobrar o tema em tópicos e conceitos que realmente serão trabalhados. Para múltiplas aulas, organizar por aula conforme o padrão desta instrução.
-- **Habilidades / competências**: priorizar habilidades como ações observáveis de aprendizagem; incluir códigos curriculares quando estiverem no material.
-- **Desenvolvimento / estratégias / metodologia**: descrever como a aula acontecerá de fato — estratégias, dinâmica, mediação, escuta, análise, exposição, prática e socialização. Para múltiplas aulas, descrever cada uma em bloco separado.
-- **Objetivos**: redigir com verbos no infinitivo e, quando fizer sentido, explicitar a finalidade do desenvolvimento proposto.
-- **Recursos**: listar materiais e suportes concretos necessários para executar a aula, detalhando itens quando isso estiver claro no material.
-- **Avaliação / sistematização**: indicar como a aprendizagem será observada ou verificada e quais critérios serão considerados.
-- **Atividades desenvolvidas**: resumir o que foi de fato realizado (campo de registro pós-aula); para múltiplas aulas, organizar por aula.
+- Tema / título da aula: nome do arquivo `.pptx`, com normalização leve.
+- Conteúdos: organizados por aula.
+- Habilidades / competências: ações observáveis; incluir códigos se houver.
+- Desenvolvimento / metodologia: descrever a prática da aula.
+- Objetivos: verbos no infinitivo.
+- Recursos: materiais concretos.
+- Avaliação: critérios observáveis.
+- Atividades desenvolvidas: resumo do que foi feito, por aula.
 
 ## Nome do arquivo de saída
 
-Salvar o resultado sempre na pasta:
+Salvar em `saidas/`
 
-`saidas/`
+- 1 aula: plano-de-aula-{disciplina}-{ano}-aula-XX.docx
+- múltiplas: plano-de-aula-{disciplina}-{ano}-aulas-XX-YY.docx
 
-Usar obrigatoriamente esta convenção de nome:
-
-- 1 aula: `plano-de-aula-{disciplina-slug}-{ano-serie-slug}-aula-{nn}.docx`
-- 2 ou 3 aulas: `plano-de-aula-{disciplina-slug}-{ano-serie-slug}-aulas-{nn}-{mm}.docx`
-
-Regras para composição:
-
-- `disciplina-slug`: disciplina em minúsculas, sem acentos e com palavras separadas por hífen.
-- `ano-serie-slug`: ano ou série em minúsculas, sem acentos e com palavras separadas por hífen.
-- `nn` e `mm`: números das aulas com dois dígitos, como `01`, `02`, `03`.
-
-Exemplos:
-
-```
-saidas/plano-de-aula-arte-1o-ano-aula-03.docx
-saidas/plano-de-aula-arte-1o-ano-aulas-03-04.docx
-saidas/plano-de-aula-arte-1o-ano-aulas-03-04-06.docx
-```
-
-Esse nome deve ser estável entre execuções com os mesmos insumos.
+Nome deve ser estável entre execuções.
 
 ## Resposta final
 
-Na resposta final:
-
-- informar o caminho do arquivo gerado;
-- dizer se o template original foi preservado;
-- dizer se todos os placeholders foram substituídos;
-- dizer se os critérios desta instrução foram aplicados no refinamento do texto;
-- apontar rapidamente qualquer campo preenchido com fallback.
+- informar caminho do arquivo;
+- confirmar preservação do template;
+- confirmar substituição de placeholders;
+- confirmar aplicação das regras;
+- indicar uso de fallback, se houver.
