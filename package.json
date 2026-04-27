@@ -1,0 +1,50 @@
+{
+  "name": "profe-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "start": "vite",
+    "build": "vite build",
+    "app": "npm run build && electron .",
+    "dist": "vite build && electron-builder"
+  },
+  "dependencies": {
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^5.1.0",
+    "electron": "^39.2.3",
+    "electron-builder": "^26.0.12",
+    "vite": "^8.0.10",
+    "vite-plugin-electron": "^0.29.0",
+    "vite-plugin-electron-renderer": "^0.15.0"
+  },
+  "build": {
+    "appId": "com.profe.desktop",
+    "productName": "Plano Leve",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "electron/preload.cjs"
+    ],
+    "extraResources": [
+      {
+        "from": "templates",
+        "to": "templates"
+      }
+    ],
+    "extraMetadata": {
+      "main": "dist-electron/main.js"
+    },
+    "win": {
+      "target": "nsis"
+    }
+  }
+}
