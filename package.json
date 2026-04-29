@@ -1,5 +1,5 @@
 {
-  "name": "profe-desktop",
+  "name": "plano-leve-desktop",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -26,15 +26,17 @@
     "vite-plugin-electron-renderer": "^0.14.0"
   },
   "build": {
-    "appId": "com.profe.desktop",
+    "appId": "com.planoleve.desktop",
     "productName": "Plano Leve",
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "build"
     },
     "files": [
       "dist/**/*",
       "dist-electron/**/*",
-      "electron/preload.cjs"
+      "electron/preload.cjs",
+      "assets/**/*"
     ],
     "extraResources": [
       {
@@ -50,6 +52,7 @@
       "main": "dist-electron/main.js"
     },
     "win": {
+      "icon": "build/icon.ico",
       "signAndEditExecutable": false,
       "target": [
         {
@@ -61,6 +64,9 @@
       ]
     },
     "nsis": {
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "perMachine": false

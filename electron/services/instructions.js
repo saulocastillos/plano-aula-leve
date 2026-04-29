@@ -1,163 +1,117 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-export const DEFAULT_INSTRUCTION_FILE_NAME = "preencher-plano-de-aula-a-partir-do-pptx.md";
+export const DEFAULT_INSTRUCTION_FILE_NAME = "instrucao-padrao-bertioga.md";
+export const JOSE_DA_COSTA_INSTRUCTION_FILE_NAME = "instrucao-padrao-jose-da-costa.md";
+export const BUILT_IN_INSTRUCTION_FILE_NAMES = [
+  DEFAULT_INSTRUCTION_FILE_NAME,
+  JOSE_DA_COSTA_INSTRUCTION_FILE_NAME
+];
+const LEGACY_GENERIC_INSTRUCTION_FILE_NAME = "instrucao-padrao-plano-de-aula.md";
+const LEGACY_DEFAULT_INSTRUCTION_FILE_NAME = "preencher-plano-de-aula-a-partir-do-pptx.md";
 
 export const DEFAULT_INSTRUCTION_CONTENT = `---
-name: preencher-plano-de-aula-a-partir-do-pptx
-description: Use esta instrução quando eu pedir para preencher o template de plano de aula com âncoras \`.docx\` a partir de 1 a 3 arquivos \`.pptx\`, consolidando os conteúdos em um único plano e respeitando as configurações de saída definidas na interface.
+name: preencher-plano-bertioga-a-partir-do-pptx
+description: Use esta instrução para gerar um plano de aula a partir de 1 a 3 arquivos .pptx usando o template padrão de Bertioga.
 ---
 
 # Instrução
 
-Quando eu mencionar \`preencher-plano-de-aula-a-partir-do-pptx\`, execute este fluxo.
-
 ## Objetivo
 
-Ler de 1 a 3 arquivos \`.pptx\` de aula, consolidar esses materiais em um único plano de aula, preencher o template \`.docx\` com âncoras \`{{...}}\` e gerar um novo documento final. Usar os critérios pedagógicos e editoriais descritos nesta instrução para melhorar a qualidade do preenchimento de cada campo.
+Ler de 1 a 3 arquivos \`.pptx\`, consolidar o conteúdo em um único plano de aula e preencher o template:
 
-## Entradas esperadas
+\`templates/Plano de Aula - Bertioga.docx\`
 
-- De 1 a 3 arquivos \`.pptx\` com o conteúdo de uma aula ou sequência de aulas relacionadas.
-- Como template padrão de saída, usar:
-  \`templates/plano-de-aula-template-com-ancoras.docx\`
-- Opcionalmente, aceitar outro template \`.docx\` com âncoras se o usuário indicar explicitamente.
-- A interface pode fornecer explicitamente estes campos de saída, que têm prioridade sobre qualquer inferência do material:
-  - nome do professor
-  - turmas
-  - quantidade de aulas
-  - período de realização (\`DATA_DE\` e \`DATA-ATÉ\`)
-- Quando possível, a interface pode pré-preencher \`turmas\` a partir da leitura dos \`.pptx\`, mas o valor final continua editável pelo usuário e deve ser respeitado se ele fizer ajustes.
+## Regras principais
 
-Convenção de caminhos do projeto:
+- Responder em português do Brasil.
+- Considerar todas as fontes fornecidas, nunca apenas a primeira.
+- Produzir texto final de uso pedagógico, não transcrição de slide.
+- Se a interface informar professor, turmas, quantidade de aulas ou período, esses valores têm prioridade.
+- Quando faltar dado objetivo, usar fallback explícito em vez de inventar.
 
-- arquivos-fonte da aula em \`entradas/\`
-- templates em \`templates/\`
-- instruções em \`instrucoes/\`
-- arquivos gerados em \`saidas/\`
+## Campos do template de Bertioga
+
+- \`{{DISCIPLINA-TITULO}}\`: cabeçalho curto, como \`Arte - 8o ano\`
+- \`{{PROFESSOR}}\`: nome do professor
+- \`{{TURMAS}}\`: ano/série e segmento
+- \`{{DISCIPLINA}}\`: disciplina principal
+- \`{{TEMA_DA_AULA}}\`: tema central da aula
+- \`{{CONTEÚDO}}\`: tópicos e conceitos efetivamente trabalhados
+- \`{{HABILIDADES}}\`: habilidades e competências, com códigos curriculares quando existirem
+- \`{{METODOLOGIA}}\`: condução da aula, etapas, dinâmica, mediação e estratégias
+- \`{{OBJETIVOS}}\`: objetivos de aprendizagem claros
+- \`{{RECURSOS}}\`: materiais e suportes necessários
+- \`{{AVALIACAO}}\`: avaliação e sistematização
+- \`{{QTD_AULAS}}\`: número de aulas
+- \`{{DATA_DE}}\` e \`{{DATA-ATÉ}}\`: período de realização
+
+## Critérios de escrita
+
+- \`CONTEÚDO\`: listar conceitos, tópicos e recortes do que será estudado.
+- \`METODOLOGIA\`: explicar como a aula acontece de fato, com começo, desenvolvimento e fechamento.
+- \`AVALIACAO\`: indicar como a aprendizagem será observada, registrada ou verificada.
+- \`OBJETIVOS\`: usar verbos no infinitivo e foco no que o estudante desenvolverá.
+
+## Observação estrutural
+
+No template de Bertioga, o campo \`Quantidade de Aulas\` pode reaproveitar a âncora \`{{AVALIACAO}}\`. Corrigir isso apenas no arquivo final gerado.
 
 ## Resultado esperado
 
-- Gerar uma cópia preenchida do \`.docx\`.
 - Preservar o template original.
-- Validar que não restaram placeholders \`{{...}}\` no arquivo final.
-- Garantir que o texto preenchido não seja apenas copiado dos \`.pptx\`, mas organizado conforme os critérios pedagógicos desta instrução.
-- Ser idempotente: repetir a execução com os mesmos arquivos de entrada deve produzir o mesmo arquivo de saída, sem criar variantes desnecessárias nem acumular duplicatas.
+- Gerar um arquivo \`.docx\` final em \`saidas/\`.
+- Não deixar placeholders \`{{...}}\` sem preencher.
+`;
 
-## Procedimento
+export const JOSE_DA_COSTA_INSTRUCTION_CONTENT = `---
+name: preencher-plano-jose-da-costa-a-partir-do-pptx
+description: Use esta instrução para gerar um plano de aula a partir de 1 a 3 arquivos .pptx usando o template padrão de José da Costa.
+---
 
-1. Confirmar que todos os arquivos-fonte existem e são legíveis.
-2. Se o usuário não indicar outro template, usar como base o arquivo:
-   \`templates/plano-de-aula-template-com-ancoras.docx\`
-3. Extrair o texto de todos os \`.pptx\`, incluindo conteúdo dos slides e, se necessário, slides de orientação para professores.
-4. Identificar todas as âncoras do template \`{{...}}\`, inclusive quando estiverem quebradas em múltiplos trechos internos do Word.
-5. Montar um único plano a partir do conjunto dos materiais, tratando os \`.pptx\` como partes de uma mesma proposta de aula ou sequência curta de aulas.
-6. Analisar cada \`.pptx\` individualmente antes da síntese final, garantindo que todos contribuam para o plano e que nenhuma fonte seja ignorada.
-7. Montar o mapeamento entre as âncoras do template e o conteúdo consolidado dos \`.pptx\`, refinando a redação com base nos critérios descritos nesta instrução.
-8. Se a interface tiver fornecido professor, turmas, quantidade de aulas ou período de realização, usar esses valores explicitamente no resultado final.
-9. Preencher o \`.docx\` em uma cópia nova, nunca sobrescrevendo o template original sem pedido explícito.
-10. Validar o arquivo final:
-   - conferir se o conteúdo principal foi inserido;
-   - verificar se não sobrou nenhum \`{{...}}\`;
-   - corrigir placeholders quebrados em múltiplos trechos do XML, se houver;
-   - corrigir problemas estruturais do template apenas no arquivo gerado, se necessário.
+# Instrução
 
-## Idempotência
+## Objetivo
 
-Esta instrução deve ser executada de forma idempotente.
+Ler de 1 a 3 arquivos \`.pptx\`, consolidar o conteúdo em um único plano de aula e preencher o template:
 
-- Com os mesmos arquivos de entrada, usar sempre o mesmo caminho de saída derivado do conteúdo.
-- Se o arquivo de saída já existir e já estiver consistente com a entrada atual, reutilizá-lo em vez de criar outro.
-- Se o arquivo de saída já existir mas estiver desatualizado em relação à entrada atual, atualizá-lo no mesmo caminho.
-- Nunca criar nomes incrementais como \`copia\`, \`final\`, \`novo\`, \`v2\` ou semelhantes, exceto se o usuário pedir explicitamente.
-- Nunca duplicar ou renomear template, instrução ou arquivo-fonte apenas por executar o fluxo novamente.
-- Se houver necessidade de corrigir um problema estrutural do template, aplicar a correção apenas no arquivo gerado final, de forma determinística.
+\`templates/Plano de Aula - José da Costa.docx\`
 
-## Regras de preenchimento
+## Regras principais
 
-- Priorizar conteúdo explícito dos \`.pptx\`.
-- Tratar o arquivo \`templates/plano-de-aula-template-com-ancoras.docx\` como template padrão de saída.
-- Se o template tiver placeholders quebrados em vários trechos internos do Word, tratá-los como um único placeholder lógico.
-- Se os \`.pptx\` não trouxerem um dado objetivo para um campo, preencher com uma marcação pragmática e explícita em vez de inventar informação.
-- Quando houver mais de um \`.pptx\`, consolidar os materiais em um único plano coerente, sem tratar cada apresentação como um plano separado.
-- Quando houver 2 ou 3 \`.pptx\`, é obrigatório considerar o conjunto inteiro; ignorar a segunda ou terceira fonte é erro de execução.
-- O plano final deve refletir progressão, complementaridade ou distribuição de atividades entre as fontes sempre que isso estiver presente no material.
-- Se a interface informar professor, turmas, quantidade de aulas ou período, esses valores devem prevalecer sobre qualquer inferência do material.
-- Manter consistência com o nível de ensino, disciplina, tema, objetivos, metodologia, recursos e avaliação encontrados no material.
-- Se o template tiver erro estrutural, como um campo apontando para a âncora errada, corrigir isso apenas no arquivo gerado.
-- Não transformar a resposta em transcrição dos slides; consolidar e escrever o plano de aula em formato final de uso.
-- Manter o processo determinístico sempre que possível: mesmos insumos devem levar ao mesmo mapeamento, mesmo nome de arquivo e mesma estrutura de saída.
+- Responder em português do Brasil.
+- Considerar integralmente todas as fontes.
+- Produzir texto final de uso, não copiar os slides literalmente.
+- Respeitar os campos definidos pela interface quando forem informados.
+- Quando faltar dado objetivo, usar fallback explícito.
 
-## Defaults permitidos quando faltarem dados
+## Campos do template de José da Costa
 
-- \`PROFESSOR\`: usar o valor configurado na interface; se não houver, \`A definir\`
-- \`PERÍODO DE REALIZAÇÃO\`: usar informação objetiva do material; se não houver, usar algo como \`conforme calendário escolar\`
-- \`Quantidade de Aulas\`: usar o valor configurado na interface; se não houver, inferir pelo material apenas se for seguro; caso contrário, usar \`A definir\`
+- \`{{PROFESSOR}}\`: nome do professor
+- \`{{TURMAS}}\`: séries e segmentos
+- \`{{DISCIPLINA}}\`: disciplina principal
+- \`{{CONTEUDOS}}\`: conteúdos e conceitos centrais da aula
+- \`{{HABILIDADES}}\`: habilidades e competências
+- \`{{DESENVOLVIMENTO}}\`: desenvolvimento da aula, com etapas, estratégias, mediação e sequência didática
+- \`{{RECURSOS}}\`: materiais e suportes
+- \`{{AVALIACAO}}\`: avaliação e sistematização
+- \`{{QTD_AULAS}}\`: número de aulas previstas
+- \`{{DATA_DE}}\` e \`{{DATA_ATE}}\`: período de realização
+- \`{{ATIVIDADES_DESENVOLVIDAS}}\`: descrição objetiva das atividades aplicadas em sala
 
-## Mapeamento sugerido
+## Critérios de escrita
 
-- \`{{DISCIPLINA-TITULO}}\`: combinação curta para o cabeçalho, como \`Arte - 9º ano\`
-- \`{{DISCIPLINA}}\`: disciplina principal do material
-- \`{{TURMAS}}\`: ano/série e segmento, preferindo o valor explicitamente configurado na interface quando houver
-- \`{{TEMA_DA_AULA}}\`: título central da aula
-- \`{{CONTEÚDO}}\`: tópicos e conceitos trabalhados
-- \`{{HABILIDADES}}\`: habilidades, competências e códigos curriculares presentes
-- \`{{METODOLOGIA}}\`: dinâmica, estratégias, etapas e condução da aula
-- \`{{OBJETIVOS}}\`: objetivos de aprendizagem explícitos ou claramente inferíveis
-- \`{{RECURSOS}}\`: materiais e recursos necessários
-- \`{{AVALIACAO}}\`: critérios, dimensão avaliada e forma de observação/sistematização
-- \`{{DATA_DE}}\` e \`{{DATA-ATÉ}}\`: período de realização, preferindo os valores explicitamente configurados na interface quando houver
+- \`CONTEUDOS\`: listar conteúdos de forma organizada e objetiva.
+- \`DESENVOLVIMENTO\`: descrever o passo a passo da aula com começo, desenvolvimento e fechamento.
+- \`ATIVIDADES_DESENVOLVIDAS\`: escrever as atividades em formato aplicável, como sequência prática do que foi ou será realizado.
+- \`AVALIACAO\`: indicar critérios observáveis de aprendizagem.
 
-## Critérios de redação por campo
+## Resultado esperado
 
-Usar estes critérios para melhorar a qualidade do preenchimento das âncoras:
-
-- \`{{TEMA_DA_AULA}}\`: escrever um tema específico, claro e diretamente ligado ao recorte da aula.
-- \`{{CONTEÚDO}}\`: desdobrar o tema em tópicos e conceitos que realmente serão trabalhados na aula.
-- \`{{HABILIDADES}}\`: priorizar habilidades como ações observáveis de aprendizagem; incluir códigos curriculares quando estiverem no material.
-- \`{{METODOLOGIA}}\`: descrever como a aula acontecerá de fato, com estratégias, dinâmica, mediação, escuta, análise, exposição, prática e socialização.
-- \`{{OBJETIVOS}}\`: redigir objetivos claros, preferencialmente com verbos no infinitivo e, quando fizer sentido, explicitar a finalidade do desenvolvimento proposto.
-- \`{{RECURSOS}}\`: listar materiais e suportes concretos necessários para executar a aula, detalhando itens e quantidades quando isso estiver claro no material.
-- \`{{AVALIACAO}}\`: indicar como a aprendizagem será observada ou verificada e quais critérios serão considerados.
-
-## Observações do template com âncoras
-
-O template \`templates/plano-de-aula-template-com-ancoras.docx\` tem um problema estrutural:
-
-- o campo \`Quantidade de Aulas\` reaproveita a âncora \`{{AVALIACAO}}\`;
-- ao preencher, corrigir isso apenas no arquivo final gerado, substituindo esse trecho pelo valor adequado de quantidade de aulas.
-
-## Nome do arquivo de saída
-
-Salvar o resultado sempre na pasta:
-
-\`saidas/\`
-
-Usar obrigatoriamente esta convenção de nome:
-
-\`plano-de-aula-{disciplina-slug}-{ano-serie-slug}-aula-{nn}.docx\`
-
-Regras para composição:
-
-- \`disciplina-slug\`: disciplina em minúsculas, sem acentos e com palavras separadas por hífen.
-- \`ano-serie-slug\`: ano ou série em minúsculas, sem acentos e com palavras separadas por hífen.
-- \`nn\`: número da aula com dois dígitos, como \`01\`, \`02\`, \`03\`.
-
-Exemplo:
-
-\`saidas/plano-de-aula-arte-9o-ano-aula-01.docx\`
-
-Esse nome deve ser estável entre execuções com os mesmos insumos.
-
-## Resposta final
-
-Na resposta final:
-
-- informar o caminho do arquivo gerado;
-- dizer se o template original foi preservado;
-- dizer se todos os placeholders foram substituídos;
-- dizer se os critérios desta instrução foram aplicados no refinamento do texto;
-- apontar rapidamente qualquer campo preenchido com fallback.
+- Preservar o template original.
+- Gerar um arquivo \`.docx\` final em \`saidas/\`.
+- Não deixar placeholders \`{{...}}\` sem preencher.
 `;
 
 function sanitizeInstructionFileName(fileName) {
@@ -175,12 +129,41 @@ function sanitizeInstructionFileName(fileName) {
 }
 
 export async function ensureDefaultInstructionFile(instrucoesDir) {
+  await fs.mkdir(instrucoesDir, { recursive: true });
   const defaultPath = path.join(instrucoesDir, DEFAULT_INSTRUCTION_FILE_NAME);
+  const josePath = path.join(instrucoesDir, JOSE_DA_COSTA_INSTRUCTION_FILE_NAME);
+  const legacyGenericPath = path.join(instrucoesDir, LEGACY_GENERIC_INSTRUCTION_FILE_NAME);
+  const legacyDefaultPath = path.join(instrucoesDir, LEGACY_DEFAULT_INSTRUCTION_FILE_NAME);
+
   try {
     await fs.access(defaultPath);
   } catch {
-    await fs.writeFile(defaultPath, DEFAULT_INSTRUCTION_CONTENT, "utf8");
+    try {
+      await fs.access(legacyGenericPath);
+      await fs.rename(legacyGenericPath, defaultPath);
+    } catch {
+      try {
+        await fs.access(legacyDefaultPath);
+        await fs.rename(legacyDefaultPath, defaultPath);
+      } catch {
+        await fs.writeFile(defaultPath, DEFAULT_INSTRUCTION_CONTENT, "utf8");
+      }
+    }
   }
+
+  try {
+    await fs.access(josePath);
+  } catch {
+    await fs.writeFile(josePath, JOSE_DA_COSTA_INSTRUCTION_CONTENT, "utf8");
+  }
+
+  try {
+    await fs.access(legacyGenericPath);
+    await fs.unlink(legacyGenericPath);
+  } catch {
+    // sem legado extra para limpar
+  }
+
   return defaultPath;
 }
 
@@ -198,6 +181,7 @@ export async function listInstructions(instrucoesDir) {
           fileName: entry.name,
           path: filePath,
           content,
+          isBuiltIn: BUILT_IN_INSTRUCTION_FILE_NAMES.includes(entry.name),
           isDefaultBuiltIn: entry.name === DEFAULT_INSTRUCTION_FILE_NAME
         };
       })
@@ -226,18 +210,44 @@ export async function readInstruction(instrucoesDir, fileName) {
     fileName: nextFileName,
     path: filePath,
     content,
+    isBuiltIn: BUILT_IN_INSTRUCTION_FILE_NAMES.includes(nextFileName),
     isDefaultBuiltIn: nextFileName === DEFAULT_INSTRUCTION_FILE_NAME
   };
 }
 
-export async function resetDefaultInstruction(instrucoesDir) {
-  await fs.mkdir(instrucoesDir, { recursive: true });
-  const filePath = path.join(instrucoesDir, DEFAULT_INSTRUCTION_FILE_NAME);
-  await fs.writeFile(filePath, DEFAULT_INSTRUCTION_CONTENT, "utf8");
+export async function deleteInstruction(instrucoesDir, fileName) {
+  await ensureDefaultInstructionFile(instrucoesDir);
+  const nextFileName = sanitizeInstructionFileName(fileName);
+
+  if (BUILT_IN_INSTRUCTION_FILE_NAMES.includes(nextFileName)) {
+    throw new Error("As instruções padrão do app não podem ser removidas.");
+  }
+
+  const filePath = path.join(instrucoesDir, nextFileName);
+  await fs.unlink(filePath);
   return {
-    fileName: DEFAULT_INSTRUCTION_FILE_NAME,
+    fileName: nextFileName,
+    path: filePath
+  };
+}
+
+export async function resetDefaultInstruction(instrucoesDir, fileName = DEFAULT_INSTRUCTION_FILE_NAME) {
+  await fs.mkdir(instrucoesDir, { recursive: true });
+  const nextFileName = sanitizeInstructionFileName(fileName);
+  const targetFileName = BUILT_IN_INSTRUCTION_FILE_NAMES.includes(nextFileName)
+    ? nextFileName
+    : DEFAULT_INSTRUCTION_FILE_NAME;
+  const filePath = path.join(instrucoesDir, targetFileName);
+  const content =
+    targetFileName === JOSE_DA_COSTA_INSTRUCTION_FILE_NAME
+      ? JOSE_DA_COSTA_INSTRUCTION_CONTENT
+      : DEFAULT_INSTRUCTION_CONTENT;
+  await fs.writeFile(filePath, content, "utf8");
+  return {
+    fileName: targetFileName,
     path: filePath,
-    content: DEFAULT_INSTRUCTION_CONTENT,
-    isDefaultBuiltIn: true
+    content,
+    isBuiltIn: true,
+    isDefaultBuiltIn: targetFileName === DEFAULT_INSTRUCTION_FILE_NAME
   };
 }

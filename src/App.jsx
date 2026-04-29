@@ -1,28 +1,54 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const MODEL_OPTIONS = [
-  { value: "gpt-5.4-mini", label: "gpt-5.4-mini", hint: "Melhor equilíbrio entre custo e qualidade." },
-  { value: "gpt-5.5", label: "gpt-5.5", hint: "Maior qualidade, com custo mais alto." }
+  {
+    value: "gpt-5.4-nano",
+    label: "GPT-5.4 Nano",
+    comboLabel: "GPT-5.4 Nano - ~R$ 0,01 por plano - Limitado, mas veloz",
+    specialty:
+      "Bom para testes rapidos e baratos, mas tende a simplificar mais o resultado.",
+    estimate: "~R$ 0,01 por plano",
+  },
+  {
+    value: "gpt-5.4-mini",
+    label: "GPT-5.4 Mini",
+    comboLabel: "GPT-5.4 Mini - ~R$ 0,04 por plano - Custo e velocidade",
+    specialty:
+      "Melhor ponto de partida para uso diario, com bom equilibrio entre qualidade, custo e rapidez.",
+    estimate: "~R$ 0,04 por plano",
+  },
+  {
+    value: "gpt-5.4",
+    label: "GPT-5.4",
+    comboLabel: "GPT-5.4 - ~R$ 0,13 por plano - Mais qualidade",
+    specialty:
+      "Entrega respostas mais consistentes e refinadas quando o material exige melhor interpretacao.",
+    estimate: "~R$ 0,13 por plano",
+  },
 ];
 
 const SORT_OPTIONS = [
   { value: "modified-desc", label: "Mais recentes" },
   { value: "modified-asc", label: "Mais antigos" },
   { value: "name-asc", label: "Nome A-Z" },
-  { value: "name-desc", label: "Nome Z-A" }
+  { value: "name-desc", label: "Nome Z-A" },
 ];
 
-function getProfeApi() {
-  if (!window.profeApi) {
+function getPlanoLeveApi() {
+  if (!window.planoLeveApi) {
     throw new Error(
-      "A ponte do Electron não está disponível. Reinicie o app para carregar o preload atualizado."
+      "A ponte do Electron não está disponível. Reinicie o app para carregar o preload atualizado.",
     );
   }
-  return window.profeApi;
+  return window.planoLeveApi;
 }
 
 function getBaseName(targetPath) {
-  return String(targetPath || "").split("/").pop() || targetPath;
+  return (
+    String(targetPath || "")
+      .split("/")
+      .pop() || targetPath
+  );
 }
 
 function mergeFiles(currentFiles, nextFiles) {
@@ -31,7 +57,7 @@ function mergeFiles(currentFiles, nextFiles) {
     const current = registry.get(file.path);
     registry.set(file.path, {
       ...file,
-      active: current?.active ?? true
+      active: current?.active ?? true,
     });
   }
   return Array.from(registry.values());
@@ -62,7 +88,7 @@ function formatModifiedDate(value) {
   try {
     return new Intl.DateTimeFormat("pt-BR", {
       dateStyle: "short",
-      timeStyle: "short"
+      timeStyle: "short",
     }).format(new Date(value));
   } catch {
     return value;
@@ -88,22 +114,161 @@ function getStatusTone({ busy, result, status }) {
   return "neutral";
 }
 
+function getInstructionLabel(instruction) {
+  if (!instruction) {
+    return "";
+  }
+
+  if (instruction.fileName === "instrucao-padrao-bertioga.md") {
+    return "Instrução padrão - Bertioga";
+  }
+  if (instruction.fileName === "instrucao-padrao-jose-da-costa.md") {
+    return "Instrução padrão - José da Costa";
+  }
+
+  return instruction.fileName;
+}
+
+function getTemplateLabel(template) {
+  if (!template) {
+    return "";
+  }
+
+  return template.isDefaultBuiltIn
+    ? "Template padrão do app"
+    : template.fileName;
+}
+
+function instructionFileNameToFriendlyName(fileName) {
+  const base = String(fileName || "")
+    .replace(/\.md$/i, "")
+    .replace(/[-_]+/g, " ")
+    .trim();
+
+  if (!base) {
+    return "";
+  }
+
+  return base.replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function friendlyNameToInstructionFileName(value) {
+  const normalized = String(value || "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/-{2,}/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return `${normalized || "instrucao"}.md`;
+}
+
+function splitTextLines(value) {
+  return String(value ?? "").replace(/\r\n/g, "\n").split("\n");
+}
+
+function buildLineDiffEntries(previousText, nextText) {
+  const previousLines = splitTextLines(previousText);
+  const nextLines = splitTextLines(nextText);
+  const matrix = Array.from({ length: previousLines.length + 1 }, () =>
+    Array(nextLines.length + 1).fill(0),
+  );
+
+  for (let leftIndex = previousLines.length - 1; leftIndex >= 0; leftIndex -= 1) {
+    for (
+      let rightIndex = nextLines.length - 1;
+      rightIndex >= 0;
+      rightIndex -= 1
+    ) {
+      if (previousLines[leftIndex] === nextLines[rightIndex]) {
+        matrix[leftIndex][rightIndex] = matrix[leftIndex + 1][rightIndex + 1] + 1;
+      } else {
+        matrix[leftIndex][rightIndex] = Math.max(
+          matrix[leftIndex + 1][rightIndex],
+          matrix[leftIndex][rightIndex + 1],
+        );
+      }
+    }
+  }
+
+  const entries = [];
+  let leftIndex = 0;
+  let rightIndex = 0;
+
+  while (leftIndex < previousLines.length && rightIndex < nextLines.length) {
+    if (previousLines[leftIndex] === nextLines[rightIndex]) {
+      entries.push({ type: "unchanged", text: previousLines[leftIndex] });
+      leftIndex += 1;
+      rightIndex += 1;
+      continue;
+    }
+
+    if (matrix[leftIndex + 1][rightIndex] >= matrix[leftIndex][rightIndex + 1]) {
+      entries.push({ type: "removed", text: previousLines[leftIndex] });
+      leftIndex += 1;
+    } else {
+      entries.push({ type: "added", text: nextLines[rightIndex] });
+      rightIndex += 1;
+    }
+  }
+
+  while (leftIndex < previousLines.length) {
+    entries.push({ type: "removed", text: previousLines[leftIndex] });
+    leftIndex += 1;
+  }
+
+  while (rightIndex < nextLines.length) {
+    entries.push({ type: "added", text: nextLines[rightIndex] });
+    rightIndex += 1;
+  }
+
+  return entries;
+}
+
+function InfoTip({ text }) {
+  return (
+    <span className="info-tip-wrap">
+      <button className="info-tip" type="button" aria-label={text}>
+        ?
+      </button>
+      <span className="info-tip-bubble" role="tooltip">
+        {text}
+      </span>
+    </span>
+  );
+}
+
 function SettingsModal({
   open,
   settings,
   projectPaths,
   onClose,
   onSave,
+  onPreviewFontScale,
   onChangeDirectory,
   onPickTemplate,
-  onSetDefaultTemplate
+  onSetDefaultTemplate,
 }) {
   const [draft, setDraft] = useState(settings);
   const [saving, setSaving] = useState(false);
+  const selectedModel =
+    MODEL_OPTIONS.find(
+      (option) => option.value === (draft.model ?? "gpt-5.4-mini"),
+    ) || MODEL_OPTIONS.find((option) => option.value === "gpt-5.4-mini");
 
   useEffect(() => {
     setDraft(settings);
   }, [settings]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    onPreviewFontScale?.(draft.fontScale ?? 100);
+  }, [draft.fontScale, onPreviewFontScale, open]);
 
   if (!open) {
     return null;
@@ -126,7 +291,10 @@ function SettingsModal({
             placeholder="sk-..."
             value={draft.apiKey ?? ""}
             onChange={(event) =>
-              setDraft((current) => ({ ...current, apiKey: event.target.value }))
+              setDraft((current) => ({
+                ...current,
+                apiKey: event.target.value,
+              }))
             }
           />
         </label>
@@ -138,7 +306,27 @@ function SettingsModal({
             placeholder="Nome do professor"
             value={draft.professorName ?? ""}
             onChange={(event) =>
-              setDraft((current) => ({ ...current, professorName: event.target.value }))
+              setDraft((current) => ({
+                ...current,
+                professorName: event.target.value,
+              }))
+            }
+          />
+        </label>
+
+        <label className="field">
+          <span>Tamanho da fonte</span>
+          <input
+            type="range"
+            min="75"
+            max="160"
+            step="1"
+            value={draft.fontScale ?? 100}
+            onChange={(event) =>
+              setDraft((current) => ({
+                ...current,
+                fontScale: Number(event.target.value),
+              }))
             }
           />
         </label>
@@ -153,12 +341,13 @@ function SettingsModal({
           >
             {MODEL_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
-                {option.label}
+                {option.comboLabel}
               </option>
             ))}
           </select>
           <small>
-            {MODEL_OPTIONS.find((option) => option.value === draft.model)?.hint}
+            {selectedModel?.specialty} Estimativa tipica:{" "}
+            {selectedModel?.estimate}.
           </small>
         </label>
 
@@ -210,11 +399,244 @@ function InstructionManagerModal({
   open,
   instructions,
   defaultInstructionFileName,
+  draft,
+  aiPrompt,
+  aiHistory,
+  aiBusy,
+  aiProposal,
   onClose,
   onSelectDefault,
-  onEdit,
+  onDraftChange,
+  onSave,
+  onDelete,
   onNew,
-  onResetDefault
+  onResetDefault,
+  onAiPromptChange,
+  onImproveWithAi,
+  onAcceptAiProposal,
+  onRejectAiProposal,
+  onSeedPromptFromSelection
+}) {
+  const composerRef = useRef(null);
+  const [selectedExcerpt, setSelectedExcerpt] = useState("");
+
+  useEffect(() => {
+    setSelectedExcerpt("");
+  }, [draft.fileName]);
+
+  if (!open) {
+    return null;
+  }
+
+  const friendlyName = draft.fileName
+    ? instructionFileNameToFriendlyName(draft.fileName)
+    : "";
+  const selectedInstruction = instructions.find(
+    (instruction) => instruction.fileName === draft.fileName,
+  );
+  const canDeleteInstruction =
+    Boolean(selectedInstruction) && !selectedInstruction.isBuiltIn;
+  const diffEntries = aiProposal?.didChangeContent
+    ? buildLineDiffEntries(aiProposal.baseContent, aiProposal.revisedContent)
+    : [];
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div
+        className="modal-card modal-card-editor"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="modal-header">
+          <h2>Instruções</h2>
+          <div className="inline-actions">
+            <button className="secondary-button" onClick={onNew}>
+              Nova instrução
+            </button>
+            <button
+              className="secondary-button"
+              onClick={() => onDelete(draft.fileName)}
+              disabled={!canDeleteInstruction}
+              title={
+                canDeleteInstruction
+                  ? "Remover a instrução selecionada"
+                  : "As instruções padrão do app não podem ser removidas."
+              }
+            >
+              Remover instrução
+            </button>
+            <button className="secondary-button" onClick={onResetDefault}>
+              Resetar padrão
+            </button>
+            <button className="primary-button" onClick={() => onSave(draft)}>
+              Salvar
+            </button>
+            <button className="ghost-button" onClick={onClose}>
+              Fechar
+            </button>
+          </div>
+        </div>
+
+        <div className="instruction-workspace">
+          <section className="instruction-editor-panel">
+            <label className="field field-tight">
+              <span>Nome da instrução</span>
+              <input
+                type="text"
+                value={friendlyName}
+                onChange={(event) =>
+                  onDraftChange({
+                    ...draft,
+                    fileName: friendlyNameToInstructionFileName(event.target.value),
+                  })
+                }
+                placeholder="Nova instrução"
+              />
+            </label>
+
+            <label className="field field-tight">
+              <span>Editor da instrução</span>
+              <div className="instruction-editor-wrap">
+                {selectedExcerpt && !aiProposal ? (
+                  <button
+                    className="selection-popover"
+                    type="button"
+                    onClick={() => {
+                      onSeedPromptFromSelection(selectedExcerpt);
+                      requestAnimationFrame(() => composerRef.current?.focus());
+                    }}
+                  >
+                    Melhorar trecho com IA
+                  </button>
+                ) : null}
+
+                {aiProposal ? (
+                  <div className="editor-proposal-shell instruction-textarea instruction-textarea-large">
+                    <div className="proposal-header">
+                      <div>
+                        <strong>Revisão sugerida pela IA</strong>
+                        <p>{aiProposal.summary}</p>
+                      </div>
+                      <div className="inline-actions">
+                        <button className="secondary-button" onClick={onRejectAiProposal}>
+                          Descartar
+                        </button>
+                        <button
+                          className="primary-button"
+                          onClick={onAcceptAiProposal}
+                          disabled={!aiProposal.didChangeContent}
+                        >
+                          Aceitar correção
+                        </button>
+                      </div>
+                    </div>
+
+                    {aiProposal.didChangeContent ? (
+                      <div className="proposal-diff proposal-diff-inline">
+                        {diffEntries.map((entry, index) => (
+                          <div
+                            className={`proposal-line proposal-line-${entry.type}`}
+                            key={`${entry.type}-${index}`}
+                          >
+                            <span className="proposal-line-mark">
+                              {entry.type === "added"
+                                ? "+"
+                                : entry.type === "removed"
+                                  ? "−"
+                                  : " "}
+                            </span>
+                            <span>{entry.text || " "}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="proposal-note">
+                        A IA respondeu à conversa, mas não propôs mudança no texto da instrução.
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <textarea
+                    className="instruction-textarea instruction-textarea-large"
+                    value={draft.content ?? ""}
+                    onChange={(event) =>
+                      onDraftChange({ ...draft, content: event.target.value })
+                    }
+                    onSelect={(event) => {
+                      const selectedText = event.target.value.slice(
+                        event.target.selectionStart,
+                        event.target.selectionEnd,
+                      );
+                      setSelectedExcerpt(selectedText.trim());
+                    }}
+                  />
+                )}
+              </div>
+              <small>
+                Edite livremente, revise a estrutura e depois salve. O conteúdo continua em
+                Markdown.
+              </small>
+            </label>
+          </section>
+
+          <aside className="instruction-assistant-panel">
+            <div className="assistant-header">
+              <h3>Melhorar com IA</h3>
+              <p>
+                Converse com a instrução, peça ajustes e revise a proposta antes de aceitar.
+              </p>
+            </div>
+
+            <div className="assistant-history">
+              {aiHistory.length === 0 ? (
+                <div className="assistant-empty">
+                  <strong>Nenhuma melhoria pedida ainda.</strong>
+                  <p>Use esse painel para conversar com a instrução e ir refinando o texto.</p>
+                </div>
+              ) : (
+                aiHistory.map((entry, index) => (
+                  <article
+                    className={`assistant-message assistant-message-${entry.role}`}
+                    key={`${entry.role}-${index}`}
+                  >
+                    <strong>{entry.role === "user" ? "Você" : "IA"}</strong>
+                    <p>{entry.content}</p>
+                  </article>
+                ))
+              )}
+            </div>
+
+            <div className="assistant-composer">
+              <textarea
+                ref={composerRef}
+                className="assistant-textarea assistant-textarea-composer"
+                value={aiPrompt}
+                onChange={(event) => onAiPromptChange(event.target.value)}
+                placeholder="Peça alterações, pergunte o que mudou ou cole um objetivo de revisão. Ex.: deixe a instrução mais objetiva e reescreva apenas o trecho selecionado."
+              />
+              <button
+                className="primary-button primary-button-block"
+                onClick={onImproveWithAi}
+                disabled={aiBusy}
+              >
+                {aiBusy ? "Melhorando..." : "Enviar para IA"}
+              </button>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TemplateManagerModal({
+  open,
+  templates,
+  defaultTemplateFileName,
+  onClose,
+  onSelectDefault,
+  onImport,
+  onResetBuiltIns,
+  onDelete
 }) {
   if (!open) {
     return null;
@@ -222,15 +644,18 @@ function InstructionManagerModal({
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-card modal-card-wide" onClick={(event) => event.stopPropagation()}>
+      <div
+        className="modal-card modal-card-wide"
+        onClick={(event) => event.stopPropagation()}
+      >
         <div className="modal-header">
-          <h2>Instruções</h2>
+          <h2>Templates</h2>
           <div className="inline-actions">
-            <button className="secondary-button" onClick={onNew}>
-              Nova instrução
+            <button className="secondary-button" onClick={onResetBuiltIns}>
+              Restaurar padrões
             </button>
-            <button className="secondary-button" onClick={onResetDefault}>
-              Resetar padrão
+            <button className="secondary-button" onClick={onImport}>
+              Importar template
             </button>
             <button className="ghost-button" onClick={onClose}>
               Fechar
@@ -239,28 +664,37 @@ function InstructionManagerModal({
         </div>
 
         <div className="instructions-list">
-          {instructions.map((instruction) => (
-            <div className="instruction-row" key={instruction.fileName}>
+          {templates.map((template) => (
+            <div className="instruction-row" key={template.fileName}>
               <label className="instruction-choice">
                 <input
                   type="radio"
-                  name="default-instruction"
-                  checked={defaultInstructionFileName === instruction.fileName}
-                  onChange={() => onSelectDefault(instruction.fileName)}
+                  name="default-template"
+                  checked={defaultTemplateFileName === template.fileName}
+                  onChange={() => onSelectDefault(template.fileName)}
                 />
                 <span>
-                  <strong>{instruction.fileName}</strong>
+                  <strong>{getTemplateLabel(template)}</strong>
                   <small>
-                    {instruction.isDefaultBuiltIn
-                      ? "Instrução padrão do app"
-                      : "Arquivo salvo em instrucoes/"}
+                    {template.isBuiltIn ? "Template padrão do app" : "Arquivo salvo em templates/"}
                   </small>
                 </span>
               </label>
 
-              <button className="ghost-button" onClick={() => onEdit(instruction)}>
-                Editar
-              </button>
+              <div className="inline-actions template-row-actions">
+                <button
+                  className="ghost-button"
+                  onClick={() => onDelete(template)}
+                  disabled={template.isBuiltIn}
+                  title={
+                    template.isBuiltIn
+                      ? "Os templates padrão do app não podem ser removidos."
+                      : "Remover template"
+                  }
+                >
+                  Remover
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -269,59 +703,7 @@ function InstructionManagerModal({
   );
 }
 
-function InstructionEditorModal({ open, draft, onClose, onChange, onSave }) {
-  if (!open) {
-    return null;
-  }
-
-  return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-card modal-card-wide" onClick={(event) => event.stopPropagation()}>
-        <div className="modal-header">
-          <h2>Editar instrução</h2>
-          <button className="ghost-button" onClick={onClose}>
-            Fechar
-          </button>
-        </div>
-
-        <label className="field">
-          <span>Nome do arquivo</span>
-          <input
-            type="text"
-            placeholder="minha-instrucao.md"
-            value={draft.fileName ?? ""}
-            onChange={(event) => onChange({ ...draft, fileName: event.target.value })}
-          />
-        </label>
-
-        <label className="field">
-          <span>Conteúdo</span>
-          <textarea
-            className="instruction-textarea"
-            value={draft.content ?? ""}
-            onChange={(event) => onChange({ ...draft, content: event.target.value })}
-          />
-        </label>
-
-        <div className="modal-actions">
-          <button className="secondary-button" onClick={onClose}>
-            Cancelar
-          </button>
-          <button className="primary-button" onClick={() => onSave(draft)}>
-            Salvar instrução
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SourcesCard({
-  files,
-  onToggleActive,
-  onRemoveFile,
-  onPick
-}) {
+function SourcesCard({ files, onToggleActive, onRemoveFile, onPick }) {
   const activeCount = files.filter((file) => file.active).length;
   const sortedFiles = sortFiles(files, "modified-desc");
 
@@ -330,7 +712,9 @@ function SourcesCard({
       <div className="panel-heading">
         <div>
           <h2>Fontes</h2>
-          <p className="panel-copy">Use até 3 arquivos `.pptx` para montar um único plano.</p>
+          <p className="panel-copy">
+            Use até 3 arquivos `.pptx` para montar um único plano.
+          </p>
         </div>
         <div className="panel-count">
           <strong>{activeCount}/3</strong>
@@ -339,7 +723,7 @@ function SourcesCard({
       </div>
 
       <div className="toolbar">
-        <button className="secondary-button" onClick={onPick}>
+        <button className="primary-button" onClick={onPick}>
           Selecionar arquivos
         </button>
       </div>
@@ -359,7 +743,10 @@ function SourcesCard({
           </div>
 
           {sortedFiles.map((file) => (
-            <div className={`file-table-row ${file.active ? "active" : ""}`} key={file.path}>
+            <div
+              className={`file-table-row ${file.active ? "active" : ""}`}
+              key={file.path}
+            >
               <label className="check-cell">
                 <input
                   type="checkbox"
@@ -371,7 +758,9 @@ function SourcesCard({
                 <strong>{file.name || getBaseName(file.path)}</strong>
                 <span>{file.path}</span>
               </div>
-              <span className="file-date">{formatModifiedDate(file.modifiedAt)}</span>
+              <span className="file-date">
+                {formatModifiedDate(file.modifiedAt)}
+              </span>
               <button
                 className="ghost-button ghost-button-small"
                 onClick={() => onRemoveFile(file.path)}
@@ -394,6 +783,7 @@ function SourcesCard({
 function PlanConfigCard({
   planConfig,
   onPlanConfigChange,
+  onClearFields,
   onProfessorBlur,
   defaultInstructionFileName,
   availableInstructions,
@@ -402,14 +792,18 @@ function PlanConfigCard({
   defaultTemplateFileName,
   availableTemplates,
   onSetDefaultTemplate,
-  onPickTemplate
+  onOpenTemplateManager,
+  outputDir,
+  onChangeOutputDirectory,
 }) {
   return (
     <section className="panel sidebar-panel">
       <div className="panel-heading">
         <div>
           <h2>Configuração</h2>
-          <p className="panel-copy">Defina os campos de saída do documento antes de gerar.</p>
+          <p className="panel-copy">
+            Defina os campos de saída do documento antes de gerar.
+          </p>
         </div>
       </div>
 
@@ -443,39 +837,53 @@ function PlanConfigCard({
       <div className="field-row">
         <div>
           <label className="field">
-            <span>Instrução ativa</span>
+            <span className="field-label-with-tip">
+              Instrução ativa
+              <InfoTip text="Define as regras que a IA vai seguir para interpretar os arquivos e escrever o plano de aula." />
+            </span>
             <select
               value={defaultInstructionFileName || ""}
-              onChange={(event) => onSelectDefaultInstruction(event.target.value)}
+              onChange={(event) =>
+                onSelectDefaultInstruction(event.target.value)
+              }
             >
               {availableInstructions.map((instruction) => (
                 <option key={instruction.fileName} value={instruction.fileName}>
-                  {instruction.fileName}
+                  {getInstructionLabel(instruction)}
                 </option>
               ))}
             </select>
           </label>
-          <button className="ghost-button ghost-button-wide" onClick={onOpenManager}>
+          <button
+            className="ghost-button ghost-button-wide"
+            onClick={onOpenManager}
+          >
             Gerenciar instruções
           </button>
         </div>
 
         <div>
           <label className="field">
-            <span>Template</span>
+            <span className="field-label-with-tip">
+              Template
+              <InfoTip text="É o modelo .docx usado como base do documento final, com a estrutura visual e os campos preenchidos automaticamente." />
+            </span>
             <select
               value={defaultTemplateFileName || ""}
               onChange={(event) => onSetDefaultTemplate(event.target.value)}
             >
               {availableTemplates.map((template) => (
                 <option key={template.fileName} value={template.fileName}>
-                  {template.fileName}
+                  {getTemplateLabel(template)}
                 </option>
               ))}
             </select>
           </label>
-          <button className="ghost-button ghost-button-wide" onClick={onPickTemplate}>
-            Importar template
+          <button
+            className="ghost-button ghost-button-wide"
+            onClick={onOpenTemplateManager}
+          >
+            Gerenciar templates
           </button>
         </div>
       </div>
@@ -517,13 +925,30 @@ function PlanConfigCard({
           />
         </label>
       </div>
+
+      <button className="ghost-button ghost-button-wide" onClick={onClearFields}>
+        Limpar campos
+      </button>
+
+      <div className="config-output-card">
+        <strong>Salvar documento em</strong>
+        <span>{outputDir || "—"}</span>
+        <button
+          className="secondary-button"
+          onClick={onChangeOutputDirectory}
+          type="button"
+        >
+          Selecionar pasta de saída
+        </button>
+      </div>
     </section>
   );
 }
 
-function ResultSection({ busy, status, result, onOpenOutput }) {
+function ResultSection({ busy, status, result, onRevealOutput }) {
   const tone = getStatusTone({ busy, result, status });
-  const showBanner = busy || tone === "success" || tone === "warn" || tone === "error";
+  const showBanner =
+    busy || tone === "success" || tone === "warn" || tone === "error";
 
   return (
     <section className="panel result-panel">
@@ -575,14 +1000,16 @@ function ResultSection({ busy, status, result, onOpenOutput }) {
                   <article className="document-card" key={item.outputPath}>
                     <div className="document-copy">
                       <h3>{item.summary.tema}</h3>
-                      <p>{item.summary.disciplina} • {item.summary.turma}</p>
+                      <p>
+                        {item.summary.disciplina} • {item.summary.turma}
+                      </p>
                       <code>{item.outputPath}</code>
                     </div>
                     <button
                       className="primary-button"
-                      onClick={() => onOpenOutput(item.outputPath)}
+                      onClick={() => onRevealOutput(item.outputPath)}
                     >
-                      Abrir
+                      Mostrar na pasta
                     </button>
                   </article>
                 ))}
@@ -613,42 +1040,49 @@ export default function App() {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [sortBy, setSortBy] = useState("modified-desc");
   const [modalOpen, setModalOpen] = useState(false);
+  const [fontScalePreview, setFontScalePreview] = useState(null);
   const [instructionManagerOpen, setInstructionManagerOpen] = useState(false);
+  const [templateManagerOpen, setTemplateManagerOpen] = useState(false);
   const [settings, setSettings] = useState({
     apiKey: "",
     model: "gpt-5.4-mini",
+    fontScale: 100,
     professorName: "",
     defaultTemplateFileName: "",
-    apiKeyConfigured: false
+    apiKeyConfigured: false,
   });
   const [planConfig, setPlanConfig] = useState({
     professor: "",
     turmas: "",
-    quantidadeAulas: "1",
+    quantidadeAulas: "",
     dataDe: "",
-    dataAte: ""
+    dataAte: "",
   });
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
-  const [editorOpen, setEditorOpen] = useState(false);
   const [instructionDraft, setInstructionDraft] = useState({
     fileName: "",
-    content: ""
+    content: "",
   });
+  const [instructionAiPrompt, setInstructionAiPrompt] = useState("");
+  const [instructionAiHistory, setInstructionAiHistory] = useState([]);
+  const [instructionAiBusy, setInstructionAiBusy] = useState(false);
+  const [instructionAiProposal, setInstructionAiProposal] = useState(null);
+  const [instructionAiSelectedExcerpt, setInstructionAiSelectedExcerpt] = useState("");
 
   useEffect(() => {
     async function load() {
       try {
-        const nextState = await getProfeApi().getAppState();
+        const nextState = await getPlanoLeveApi().getAppState();
         setAppState(nextState);
         setSettings(nextState.settings);
         setPlanConfig({
           professor: nextState.settings.professorName || "",
           turmas: nextState.settings.planTurmas || "",
-          quantidadeAulas: nextState.settings.planQuantidadeAulas || "1",
+          quantidadeAulas: nextState.settings.planQuantidadeAulas ?? "1",
           dataDe: nextState.settings.planDataDe || "",
-          dataAte: nextState.settings.planDataAte || ""
+          dataAte: nextState.settings.planDataAte || "",
         });
       } catch (error) {
         setStatus(error.message || "Não foi possível inicializar o app.");
@@ -658,22 +1092,52 @@ export default function App() {
     load();
   }, []);
 
+  useEffect(() => {
+    const scale = Math.min(
+      160,
+      Math.max(75, Number(fontScalePreview ?? settings.fontScale) || 100),
+    );
+    document.documentElement.style.fontSize = `${scale}%`;
+    return () => {
+      document.documentElement.style.fontSize = "";
+    };
+  }, [fontScalePreview, settings.fontScale]);
+
   async function refreshState() {
-    const nextState = await getProfeApi().getAppState();
+    const nextState = await getPlanoLeveApi().getAppState();
     setAppState(nextState);
     setSettings(nextState.settings);
     return nextState;
   }
 
+  useEffect(() => {
+    if (!instructionManagerOpen) {
+      return;
+    }
+
+    const selectedInstruction = (appState?.instructions ?? []).find(
+      (instruction) => instruction.fileName === settings.defaultInstructionFileName,
+    );
+
+    if (selectedInstruction) {
+      setInstructionDraft({
+        fileName: selectedInstruction.fileName,
+        content: selectedInstruction.content,
+      });
+      setInstructionAiProposal(null);
+      setInstructionAiSelectedExcerpt("");
+    }
+  }, [instructionManagerOpen, appState, settings.defaultInstructionFileName]);
+
   async function handlePickFile() {
     try {
       setStatus("Abrindo seletor de arquivo...");
-      const api = getProfeApi();
+      const api = getPlanoLeveApi();
       const picked =
         (await api.pickInputFiles?.()) ??
         (() => {
           throw new Error(
-            "O preload atual não expõe seleção múltipla. Reinicie o app para atualizar o processo Electron."
+            "O preload atual não expõe seleção múltipla. Reinicie o app para atualizar o processo Electron.",
           );
         })();
 
@@ -686,34 +1150,41 @@ export default function App() {
       const limited = merged.slice(0, 3);
       setSelectedFiles(limited);
       if (merged.length > 3) {
-        setStatus("Use no máximo 3 arquivos por plano. Os excedentes foram ignorados.");
+        setStatus(
+          "Use no máximo 3 arquivos por plano. Os excedentes foram ignorados.",
+        );
       } else {
         setStatus(`${picked.length} arquivo(s) adicionado(s).`);
       }
 
       const detected = await api.detectPlanFields?.({
-        inputPaths: limited.filter((file) => file.active).map((file) => file.path)
+        inputPaths: limited
+          .filter((file) => file.active)
+          .map((file) => file.path),
       });
       if (detected?.turmas && !String(planConfig.turmas || "").trim()) {
         applyPlanConfigPatch({ turmas: detected.turmas });
       }
     } catch (error) {
-      setStatus(error.message || "Não foi possível abrir o seletor de arquivo.");
+      setStatus(
+        error.message || "Não foi possível abrir o seletor de arquivo.",
+      );
     }
   }
 
   async function handleSaveSettings(nextSettings) {
     try {
-      const saved = await getProfeApi().saveSettings(nextSettings);
+      const saved = await getPlanoLeveApi().saveSettings(nextSettings);
       setSettings(saved);
       setPlanConfig((current) => ({
         ...current,
         professor: current.professor || saved.professorName || "",
         turmas: current.turmas || saved.planTurmas || "",
-        quantidadeAulas: current.quantidadeAulas || saved.planQuantidadeAulas || "1",
+        quantidadeAulas: current.quantidadeAulas ?? saved.planQuantidadeAulas ?? "1",
         dataDe: current.dataDe || saved.planDataDe || "",
-        dataAte: current.dataAte || saved.planDataAte || ""
+        dataAte: current.dataAte || saved.planDataAte || "",
       }));
+      setFontScalePreview(null);
       setModalOpen(false);
       setStatus("Configuração salva com sucesso.");
     } catch (error) {
@@ -729,29 +1200,33 @@ export default function App() {
     }
 
     try {
-      const saved = await getProfeApi().saveSettings({
+      const saved = await getPlanoLeveApi().saveSettings({
         ...settings,
-        professorName: normalized
+        professorName: normalized,
       });
       setSettings(saved);
     } catch (error) {
-      setStatus(error.message || "Não foi possível salvar o nome do professor.");
+      setStatus(
+        error.message || "Não foi possível salvar o nome do professor.",
+      );
     }
   }
 
   async function persistPlanConfig(nextConfig) {
     try {
-      const saved = await getProfeApi().saveSettings({
+      const saved = await getPlanoLeveApi().saveSettings({
         ...settings,
         professorName: String(nextConfig.professor || "").trim(),
         planTurmas: String(nextConfig.turmas || "").trim(),
-        planQuantidadeAulas: String(nextConfig.quantidadeAulas || "").trim() || "1",
+        planQuantidadeAulas: String(nextConfig.quantidadeAulas ?? "").trim(),
         planDataDe: String(nextConfig.dataDe || "").trim(),
-        planDataAte: String(nextConfig.dataAte || "").trim()
+        planDataAte: String(nextConfig.dataAte || "").trim(),
       });
       setSettings(saved);
     } catch (error) {
-      setStatus(error.message || "Não foi possível salvar a configuração do plano.");
+      setStatus(
+        error.message || "Não foi possível salvar a configuração do plano.",
+      );
     }
   }
 
@@ -765,20 +1240,24 @@ export default function App() {
   }
 
   async function handleSetDefaultInstruction(fileName) {
-    const saved = await getProfeApi().setDefaultInstruction(fileName);
+    const saved = await getPlanoLeveApi().setDefaultInstruction(fileName);
     setSettings((current) => ({
       ...current,
-      defaultInstructionFileName: saved.defaultInstructionFileName
+      defaultInstructionFileName: saved.defaultInstructionFileName,
     }));
+    setInstructionAiHistory([]);
+    setInstructionAiPrompt("");
+    setInstructionAiProposal(null);
+    setInstructionAiSelectedExcerpt("");
     await refreshState();
     setStatus(`Instrução default definida para ${fileName}.`);
   }
 
   async function handleSetDefaultTemplate(fileName) {
-    const saved = await getProfeApi().setDefaultTemplate(fileName);
+    const saved = await getPlanoLeveApi().setDefaultTemplate(fileName);
     setSettings((current) => ({
       ...current,
-      defaultTemplateFileName: saved.defaultTemplateFileName
+      defaultTemplateFileName: saved.defaultTemplateFileName,
     }));
     await refreshState();
     setStatus(`Template padrão definido para ${fileName}.`);
@@ -790,20 +1269,164 @@ export default function App() {
       return;
     }
 
-    const saved = await getProfeApi().saveInstruction(nextDraft);
-    setEditorOpen(false);
-    await refreshState();
+    const saved = await getPlanoLeveApi().saveInstruction(nextDraft);
+    await getPlanoLeveApi().setDefaultInstruction(saved.fileName);
+    const nextState = await refreshState();
+    const selectedInstruction =
+      nextState.instructions.find(
+        (instruction) => instruction.fileName === saved.fileName,
+      ) || saved;
+    setInstructionDraft({
+      fileName: selectedInstruction.fileName,
+      content: selectedInstruction.content ?? nextDraft.content,
+    });
+    setInstructionAiProposal(null);
     setStatus(`Instrução salva em instrucoes/${saved.fileName}.`);
   }
 
   async function handleResetDefaultInstruction() {
-    const saved = await getProfeApi().resetDefaultInstruction();
+    const saved = await getPlanoLeveApi().resetDefaultInstruction(
+      instructionDraft.fileName,
+    );
     await refreshState();
+    setInstructionDraft({
+      fileName: saved.fileName,
+      content: saved.content,
+    });
+    setInstructionAiProposal(null);
+    setInstructionAiHistory([]);
+    setInstructionAiPrompt("");
+    setInstructionAiSelectedExcerpt("");
     setStatus(`Instrução padrão restaurada em instrucoes/${saved.fileName}.`);
   }
 
+  async function handleImproveInstructionWithAi() {
+    if (!instructionAiPrompt.trim()) {
+      setStatus("Descreva a melhoria que você quer aplicar na instrução.");
+      return;
+    }
+
+    const requestText = instructionAiPrompt.trim();
+    const nextUserMessage = { role: "user", content: requestText };
+    const nextHistory = [...instructionAiHistory, nextUserMessage];
+    setInstructionAiBusy(true);
+    setInstructionAiHistory(nextHistory);
+    setInstructionAiPrompt("");
+
+    try {
+      const improved = await getPlanoLeveApi().improveInstruction({
+        fileName: instructionDraft.fileName,
+        content: instructionDraft.content,
+        request: requestText,
+        selectedExcerpt: instructionAiSelectedExcerpt,
+        history: nextHistory,
+      });
+
+      setInstructionAiHistory((current) => [
+        ...current,
+        { role: "assistant", content: improved.summary },
+      ]);
+      setInstructionAiProposal(
+        improved.didChangeContent
+          ? {
+              summary: improved.summary,
+              didChangeContent: true,
+              baseContent: instructionDraft.content,
+              revisedContent: improved.revisedContent,
+            }
+          : null,
+      );
+      setInstructionAiSelectedExcerpt("");
+      setStatus(
+        improved.didChangeContent
+          ? "A IA preparou uma revisão. Revise e aceite ou descarte a correção."
+          : "A IA respondeu à conversa sem alterar o texto da instrução.",
+      );
+    } catch (error) {
+      setStatus(error.message || "Não foi possível melhorar a instrução com IA.");
+    } finally {
+      setInstructionAiBusy(false);
+    }
+  }
+
+  async function handleDeleteInstruction(fileName) {
+    if (!fileName) {
+      return;
+    }
+
+    try {
+      await getPlanoLeveApi().deleteInstruction(fileName);
+      const nextState = await refreshState();
+      const fallbackInstruction =
+        nextState.instructions.find(
+          (instruction) =>
+            instruction.fileName === nextState.settings.defaultInstructionFileName,
+        ) || nextState.instructions[0];
+
+      setInstructionDraft({
+        fileName: fallbackInstruction?.fileName || "",
+        content: fallbackInstruction?.content || "",
+      });
+      setInstructionAiHistory([]);
+      setInstructionAiPrompt("");
+      setInstructionAiProposal(null);
+      setInstructionAiSelectedExcerpt("");
+      setStatus(`Instrução removida: ${fileName}.`);
+    } catch (error) {
+      setStatus(error.message || "Não foi possível remover a instrução.");
+    }
+  }
+
+  function handleAcceptAiProposal() {
+    if (!instructionAiProposal?.didChangeContent) {
+      setInstructionAiProposal(null);
+      return;
+    }
+
+    setInstructionDraft((current) => ({
+      ...current,
+      content: instructionAiProposal.revisedContent,
+    }));
+    setInstructionAiProposal(null);
+    setStatus("Correção aplicada ao editor. Salve a instrução quando estiver satisfeito.");
+  }
+
+  function handleRejectAiProposal() {
+    setInstructionAiProposal(null);
+    setStatus("Revisão descartada.");
+  }
+
+  function handleSeedPromptFromSelection(selectedExcerpt) {
+    const nextExcerpt = String(selectedExcerpt || "").trim();
+    if (!nextExcerpt) {
+      return;
+    }
+
+    setInstructionAiSelectedExcerpt(nextExcerpt);
+    setInstructionAiPrompt(
+      [
+        "Quero melhorar apenas este trecho da instrução, preservando o restante do arquivo.",
+        "",
+        "Trecho selecionado:",
+        '"""',
+        nextExcerpt,
+        '"""',
+        "",
+        "Objetivo da revisão:",
+      ].join("\n"),
+    );
+    setStatus("Trecho enviado para a caixa de conversa da IA.");
+  }
+
+  function handleInstructionDraftChange(nextDraft) {
+    setInstructionDraft(nextDraft);
+    setInstructionAiProposal(null);
+  }
+
   async function handleGenerate() {
-    const inputPaths = selectedFiles.filter((file) => file.active).map((file) => file.path);
+    const inputPaths = selectedFiles
+      .filter((file) => file.active)
+      .map((file) => file.path);
 
     if (inputPaths.length === 0) {
       setStatus("Selecione pelo menos um arquivo .pptx antes de gerar.");
@@ -816,7 +1439,7 @@ export default function App() {
 
     try {
       await persistPlanConfig(planConfig);
-      const api = getProfeApi();
+      const api = getPlanoLeveApi();
       const generation =
         (await api.generatePlans?.({
           inputPaths,
@@ -825,12 +1448,12 @@ export default function App() {
             turmas: planConfig.turmas,
             quantidadeAulas: planConfig.quantidadeAulas,
             dataDe: planConfig.dataDe,
-            dataAte: planConfig.dataAte || planConfig.dataDe
-          }
+            dataAte: planConfig.dataAte || planConfig.dataDe,
+          },
         })) ??
         (() => {
           throw new Error(
-            "O preload atual não expõe geração do plano. Reinicie o app para atualizar o processo Electron."
+            "O preload atual não expõe geração do plano. Reinicie o app para atualizar o processo Electron.",
           );
         })();
       setResult(generation);
@@ -851,7 +1474,7 @@ export default function App() {
 
   async function handleChangeDirectory(kind) {
     try {
-      const nextDir = await getProfeApi().pickDirectory(kind);
+      const nextDir = await getPlanoLeveApi().pickDirectory(kind);
       if (!nextDir) {
         setStatus("Seleção de pasta cancelada.");
         return;
@@ -859,12 +1482,14 @@ export default function App() {
 
       const nextSettings = {
         ...settings,
-        [kind === "output" ? "outputDir" : "inputDir"]: nextDir
+        [kind === "output" ? "outputDir" : "inputDir"]: nextDir,
       };
-      const saved = await getProfeApi().saveSettings(nextSettings);
+      const saved = await getPlanoLeveApi().saveSettings(nextSettings);
       setSettings(saved);
       await refreshState();
-      setStatus(kind === "output" ? "Pasta de saída atualizada." : "Pasta atualizada.");
+      setStatus(
+        kind === "output" ? "Pasta de saída atualizada." : "Pasta atualizada.",
+      );
     } catch (error) {
       setStatus(error.message || "Não foi possível atualizar a pasta.");
     }
@@ -872,19 +1497,54 @@ export default function App() {
 
   async function handlePickTemplate() {
     try {
-      const sourcePath = await getProfeApi().pickTemplateFile();
+      const sourcePath = await getPlanoLeveApi().pickTemplateFile();
       if (!sourcePath) {
         setStatus("Seleção de template cancelada.");
         return;
       }
 
-      const imported = await getProfeApi().importTemplate(sourcePath);
+      const imported = await getPlanoLeveApi().importTemplate(sourcePath);
       await refreshState();
       await handleSetDefaultTemplate(imported.fileName);
       setStatus(`Template importado em templates/${imported.fileName}.`);
     } catch (error) {
       setStatus(error.message || "Não foi possível importar o template.");
     }
+  }
+
+  async function handleDeleteTemplate(template) {
+    if (!template?.fileName) {
+      return;
+    }
+
+    try {
+      await getPlanoLeveApi().deleteTemplate(template.fileName);
+      await refreshState();
+      setStatus(`Template removido: ${template.fileName}.`);
+    } catch (error) {
+      setStatus(error.message || "Não foi possível remover o template.");
+    }
+  }
+
+  async function handleResetBuiltInTemplates() {
+    try {
+      await getPlanoLeveApi().resetBuiltInTemplates();
+      await refreshState();
+      setStatus("Templates padrão restaurados: modelo com âncoras, Bertioga e José da Costa.");
+    } catch (error) {
+      setStatus(error.message || "Não foi possível restaurar os templates padrão.");
+    }
+  }
+
+  function handleClearPlanFields() {
+    applyPlanConfigPatch({
+      professor: "",
+      turmas: "",
+      quantidadeAulas: "",
+      dataDe: "",
+      dataAte: "",
+    });
+    setStatus("Campos da configuração limpos.");
   }
 
   const apiReady = settings.apiKeyConfigured || Boolean(settings.apiKey);
@@ -907,12 +1567,16 @@ export default function App() {
           onToggleActive={(targetPath) =>
             setSelectedFiles((current) =>
               current.map((file) =>
-                file.path === targetPath ? { ...file, active: !file.active } : file
-              )
+                file.path === targetPath
+                  ? { ...file, active: !file.active }
+                  : file,
+              ),
             )
           }
           onRemoveFile={(targetPath) =>
-            setSelectedFiles((current) => current.filter((file) => file.path !== targetPath))
+            setSelectedFiles((current) =>
+              current.filter((file) => file.path !== targetPath),
+            )
           }
           onPick={handlePickFile}
         />
@@ -920,6 +1584,7 @@ export default function App() {
         <PlanConfigCard
           planConfig={planConfig}
           onPlanConfigChange={applyPlanConfigPatch}
+          onClearFields={handleClearPlanFields}
           onProfessorBlur={persistProfessorName}
           defaultInstructionFileName={settings.defaultInstructionFileName}
           availableInstructions={availableInstructions}
@@ -928,7 +1593,9 @@ export default function App() {
           defaultTemplateFileName={settings.defaultTemplateFileName}
           availableTemplates={appState?.templates ?? []}
           onSetDefaultTemplate={handleSetDefaultTemplate}
-          onPickTemplate={handlePickTemplate}
+          onOpenTemplateManager={() => setTemplateManagerOpen(true)}
+          outputDir={appState?.projectPaths?.saidasDir}
+          onChangeOutputDirectory={() => handleChangeDirectory("output")}
         />
 
         <div className="generate-wrapper">
@@ -937,7 +1604,7 @@ export default function App() {
             disabled={!canGenerate}
             onClick={handleGenerate}
           >
-            {busy ? "Gerando..." : "Gerar plano"}
+            {busy ? "Gerando..." : "Gerar"}
           </button>
         </div>
 
@@ -945,7 +1612,7 @@ export default function App() {
           busy={busy}
           status={status}
           result={result}
-          onOpenOutput={(outputPath) => getProfeApi().openPath(outputPath)}
+          onRevealOutput={(outputPath) => getPlanoLeveApi().revealPath(outputPath)}
         />
       </main>
 
@@ -953,8 +1620,12 @@ export default function App() {
         open={modalOpen}
         settings={settings}
         projectPaths={appState?.projectPaths}
-        onClose={() => setModalOpen(false)}
+        onClose={() => {
+          setFontScalePreview(null);
+          setModalOpen(false);
+        }}
         onSave={handleSaveSettings}
+        onPreviewFontScale={setFontScalePreview}
         onChangeDirectory={handleChangeDirectory}
         onPickTemplate={handlePickTemplate}
         onSetDefaultTemplate={handleSetDefaultTemplate}
@@ -963,32 +1634,47 @@ export default function App() {
         open={instructionManagerOpen}
         instructions={availableInstructions}
         defaultInstructionFileName={settings.defaultInstructionFileName}
+        draft={instructionDraft}
+        aiPrompt={instructionAiPrompt}
+        aiHistory={instructionAiHistory}
+        aiBusy={instructionAiBusy}
+        aiProposal={instructionAiProposal}
         onClose={() => setInstructionManagerOpen(false)}
         onSelectDefault={handleSetDefaultInstruction}
-        onEdit={(instruction) => {
-          setInstructionDraft({
-            fileName: instruction.fileName,
-            content: instruction.content
-          });
-          setInstructionManagerOpen(false);
-          setEditorOpen(true);
-        }}
+        onDraftChange={handleInstructionDraftChange}
+        onSave={handleSaveInstruction}
+        onDelete={handleDeleteInstruction}
         onNew={() => {
           setInstructionDraft({
             fileName: "nova-instrucao.md",
-            content: ""
+            content: "",
           });
-          setInstructionManagerOpen(false);
-          setEditorOpen(true);
+          setInstructionAiHistory([]);
+          setInstructionAiPrompt("");
+          setInstructionAiProposal(null);
+          setInstructionAiSelectedExcerpt("");
         }}
         onResetDefault={handleResetDefaultInstruction}
+        onAiPromptChange={(value) => {
+          setInstructionAiPrompt(value);
+          if (!String(value || "").trim()) {
+            setInstructionAiSelectedExcerpt("");
+          }
+        }}
+        onImproveWithAi={handleImproveInstructionWithAi}
+        onAcceptAiProposal={handleAcceptAiProposal}
+        onRejectAiProposal={handleRejectAiProposal}
+        onSeedPromptFromSelection={handleSeedPromptFromSelection}
       />
-      <InstructionEditorModal
-        open={editorOpen}
-        draft={instructionDraft}
-        onClose={() => setEditorOpen(false)}
-        onChange={setInstructionDraft}
-        onSave={handleSaveInstruction}
+      <TemplateManagerModal
+        open={templateManagerOpen}
+        templates={appState?.templates ?? []}
+        defaultTemplateFileName={settings.defaultTemplateFileName}
+        onClose={() => setTemplateManagerOpen(false)}
+        onSelectDefault={handleSetDefaultTemplate}
+        onImport={handlePickTemplate}
+        onResetBuiltIns={handleResetBuiltInTemplates}
+        onDelete={handleDeleteTemplate}
       />
     </div>
   );

@@ -87,7 +87,7 @@ export async function fillTemplate({
   outputPath,
   replacements
 }) {
-  const extractedDir = await extractOfficeArchive(templatePath, "profe-docx");
+  const extractedDir = await extractOfficeArchive(templatePath, "plano-leve-docx");
   const documentXmlPath = path.join(extractedDir, "word", "document.xml");
   const xml = await fs.readFile(documentXmlPath, "utf8");
 

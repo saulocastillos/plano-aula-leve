@@ -1,14 +1,18 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
-contextBridge.exposeInMainWorld("profeApi", {
+contextBridge.exposeInMainWorld("planoLeveApi", {
   getAppState: () => ipcRenderer.invoke("app:get-state"),
   getSettings: () => ipcRenderer.invoke("settings:get"),
   saveSettings: (settings) => ipcRenderer.invoke("settings:save", settings),
   saveInstruction: (payload) => ipcRenderer.invoke("instructions:save", payload),
-  resetDefaultInstruction: () => ipcRenderer.invoke("instructions:reset-default"),
+  deleteInstruction: (fileName) => ipcRenderer.invoke("instructions:delete", fileName),
+  improveInstruction: (payload) => ipcRenderer.invoke("instructions:improve", payload),
+  resetDefaultInstruction: (fileName) => ipcRenderer.invoke("instructions:reset-default", fileName),
   setDefaultInstruction: (fileName) => ipcRenderer.invoke("instructions:set-default", fileName),
   pickTemplateFile: () => ipcRenderer.invoke("templates:pick-template"),
   importTemplate: (sourcePath) => ipcRenderer.invoke("templates:import", sourcePath),
+  deleteTemplate: (fileName) => ipcRenderer.invoke("templates:delete", fileName),
+  resetBuiltInTemplates: () => ipcRenderer.invoke("templates:reset-built-ins"),
   setDefaultTemplate: (fileName) => ipcRenderer.invoke("templates:set-default", fileName),
   pickInputFiles: () => ipcRenderer.invoke("files:pick-inputs"),
   detectPlanFields: (payload) => ipcRenderer.invoke("plans:detect-fields", payload),
@@ -17,6 +21,7 @@ contextBridge.exposeInMainWorld("profeApi", {
   pickInputFile: () =>
     ipcRenderer.invoke("files:pick-inputs").then((paths) => paths?.[0] ?? null),
   openPath: (targetPath) => ipcRenderer.invoke("files:open-path", targetPath),
+  revealPath: (targetPath) => ipcRenderer.invoke("files:reveal-path", targetPath),
   generatePlans: (payload) => ipcRenderer.invoke("plans:generate", payload),
   generatePlan: async (payload) => {
     const inputPath = payload?.inputPath;

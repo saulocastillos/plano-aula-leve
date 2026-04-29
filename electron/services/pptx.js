@@ -20,7 +20,7 @@ function extractTextsFromSlide(xml) {
 }
 
 export async function extractPptxText(filePath) {
-  const extractedDir = await extractOfficeArchive(filePath, "profe-pptx");
+  const extractedDir = await extractOfficeArchive(filePath, "plano-leve-pptx");
   const slidesDir = path.join(extractedDir, "ppt", "slides");
   const slideFiles = (await fs.readdir(slidesDir))
     .filter((name) => /^slide\d+\.xml$/.test(name))
