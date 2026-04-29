@@ -93,6 +93,7 @@ function buildPrompt({
     "- professor deve ser 'A definir' se não houver nome no material",
     "- período de realização deve usar informação do material; se não houver, usar 'conforme calendário escolar'",
     "- quantidade de aulas deve ser inferida apenas se segura; caso contrário, usar 'A definir'",
+    "- em turmas, não use rótulos genéricos como 'Anos Finais'; prefira ano/série específico, e se não houver dado seguro use 'A definir'",
     "- aulaNumero deve ter apenas dois dígitos, como 01",
     "- anoSerieSlug deve ser um slug curto, como '9o-ano' ou '1a-serie'",
     "- com 2 ou 3 fontes, o tema, o conteúdo, a metodologia e a avaliação devem refletir o conjunto das fontes, não apenas a primeira",

@@ -67,6 +67,38 @@ function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+const GENERIC_TURMA_LABELS = [
+  /anos?\s+finais?/i,
+  /ensino\s+fundamental\s*(?:ii|2)/i,
+  /fundamental\s*(?:ii|2)/i,
+  /segmento\s+final/i
+];
+
+function sanitizeTurmasValue(value) {
+  let normalized = String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!normalized) {
+    return "";
+  }
+
+  if (GENERIC_TURMA_LABELS.some((pattern) => pattern.test(normalized))) {
+    for (const pattern of GENERIC_TURMA_LABELS) {
+      normalized = normalized
+        .replace(new RegExp(`\\s*[-–—,:]?\\s*${pattern.source}`, "i"), "")
+        .replace(new RegExp(`${pattern.source}\\s*[-–—,:]?\\s*`, "i"), "")
+        .trim();
+    }
+  }
+
+  if (!normalized || GENERIC_TURMA_LABELS.some((pattern) => pattern.test(normalized))) {
+    return "";
+  }
+
+  return normalized;
+}
+
 function getSettingsPath() {
   return path.join(app.getPath("userData"), settingsFileName);
 }
@@ -166,7 +198,7 @@ function detectTurmasFromText(text) {
     /turmas?\s*[:\-]\s*([^.|\n\r]+?)(?:slide\s+\d+[: ]|$)/i
   );
   if (explicitMatch?.[1]) {
-    return explicitMatch[1].trim();
+    return sanitizeTurmasValue(explicitMatch[1]);
   }
 
   const matches = [
@@ -182,7 +214,7 @@ function detectTurmasFromText(text) {
     return "";
   }
 
-  return unique.slice(0, 3).join(", ");
+  return sanitizeTurmasValue(unique.slice(0, 3).join(", "));
 }
 
 function mapPlanToTemplate(planData) {
@@ -249,7 +281,7 @@ function normalizePlanData(planData, outputConfig, settings) {
   const turmas =
     String(outputConfig?.turmas || "").trim() ||
     String(settings.planTurmas || "").trim() ||
-    planData.turmas ||
+    sanitizeTurmasValue(planData.turmas) ||
     "A definir";
 
   const quantidadeAulas =
