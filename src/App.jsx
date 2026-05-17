@@ -34,6 +34,57 @@ const SORT_OPTIONS = [
   { value: "name-desc", label: "Nome Z-A" },
 ];
 
+const DOCUMENT_TYPES = [
+  { value: "plano_aula", label: "Plano de aula", maxFiles: 3 },
+  { value: "planejamento_bimestral", label: "Planejamento bimestral", maxFiles: null },
+];
+
+const BIMESTRAL_INSTRUCTION_FILE_NAME =
+  "instrucao-padrao-planejamento-bimestral.md";
+const BIMESTRAL_TEMPLATE_PATTERN = /planejamento.*bimestral/i;
+const SCHEDULE_MODE_OPTIONS = [
+  { value: "quantidade", label: "Por quantidade de aulas" },
+  { value: "data_fim", label: "Por data final" },
+];
+const CADENCE_OPTIONS = [
+  { value: "semanal", label: "Semanal (1x por semana)", disabled: false },
+  { value: "2x-semana", label: "2 vezes por semana", disabled: true },
+  { value: "3x-semana", label: "3 vezes por semana", disabled: true },
+];
+
+function getDocumentTypeConfig(documentType) {
+  return (
+    DOCUMENT_TYPES.find((option) => option.value === documentType) ||
+    DOCUMENT_TYPES[0]
+  );
+}
+
+function isBimestralInstruction(instruction) {
+  return (
+    instruction?.fileName === BIMESTRAL_INSTRUCTION_FILE_NAME
+  );
+}
+
+function isBimestralTemplate(template) {
+  return BIMESTRAL_TEMPLATE_PATTERN.test(String(template?.fileName || ""));
+}
+
+function filterInstructionsByDocumentType(instructions, documentType) {
+  const items = Array.isArray(instructions) ? instructions : [];
+  if (documentType === "planejamento_bimestral") {
+    return items.filter(isBimestralInstruction);
+  }
+  return items.filter((instruction) => !isBimestralInstruction(instruction));
+}
+
+function filterTemplatesByDocumentType(templates, documentType) {
+  const items = Array.isArray(templates) ? templates : [];
+  if (documentType === "planejamento_bimestral") {
+    return items.filter(isBimestralTemplate);
+  }
+  return items.filter((template) => !isBimestralTemplate(template));
+}
+
 function getPlanoLeveApi() {
   if (!window.planoLeveApi) {
     throw new Error(
@@ -124,6 +175,9 @@ function getInstructionLabel(instruction) {
   }
   if (instruction.fileName === "instrucao-padrao-jose-da-costa.md") {
     return "Instrução padrão - José da Costa";
+  }
+  if (instruction.fileName === "instrucao-padrao-planejamento-bimestral.md") {
+    return "Instrução padrão - Planejamento bimestral (Bertioga)";
   }
 
   return instruction.fileName;
@@ -248,8 +302,6 @@ function SettingsModal({
   onSave,
   onPreviewFontScale,
   onChangeDirectory,
-  onPickTemplate,
-  onSetDefaultTemplate,
 }) {
   const [draft, setDraft] = useState(settings);
   const [saving, setSaving] = useState(false);
@@ -365,10 +417,6 @@ function SettingsModal({
               Alterar saída
             </button>
           </div>
-          <p>
-            <strong>Template</strong>
-            <span>{projectPaths?.defaultTemplatePath || "—"}</span>
-          </p>
         </div>
 
         <div className="modal-actions">
@@ -703,9 +751,17 @@ function TemplateManagerModal({
   );
 }
 
-function SourcesCard({ files, onToggleActive, onRemoveFile, onPick }) {
+function SourcesCard({
+  files,
+  documentType,
+  onToggleActive,
+  onRemoveFile,
+  onPick,
+}) {
   const activeCount = files.filter((file) => file.active).length;
   const sortedFiles = sortFiles(files, "modified-desc");
+  const documentTypeConfig = getDocumentTypeConfig(documentType);
+  const isLimited = Number.isInteger(documentTypeConfig.maxFiles);
 
   return (
     <section className="panel workspace-panel">
@@ -713,11 +769,15 @@ function SourcesCard({ files, onToggleActive, onRemoveFile, onPick }) {
         <div>
           <h2>Fontes</h2>
           <p className="panel-copy">
-            Use até 3 arquivos `.pptx` para montar um único plano.
+            {isLimited
+              ? `Use até ${documentTypeConfig.maxFiles} arquivos \`.pptx\` para montar um único plano.`
+              : "Use quantos arquivos `.pptx` precisar para montar o planejamento."}
           </p>
         </div>
         <div className="panel-count">
-          <strong>{activeCount}/3</strong>
+          <strong>
+            {isLimited ? `${activeCount}/${documentTypeConfig.maxFiles}` : activeCount}
+          </strong>
           <span>fontes ativas</span>
         </div>
       </div>
@@ -731,7 +791,11 @@ function SourcesCard({ files, onToggleActive, onRemoveFile, onPick }) {
       {sortedFiles.length === 0 ? (
         <div className="empty-state">
           <strong>Nenhum arquivo selecionado.</strong>
-          <p>Escolha de 1 a 3 arquivos `.pptx` para alimentar o plano.</p>
+          <p>
+            {isLimited
+              ? `Escolha de 1 a ${documentTypeConfig.maxFiles} arquivos \`.pptx\` para alimentar o plano.`
+              : "Escolha os arquivos `.pptx` para alimentar o planejamento."}
+          </p>
         </div>
       ) : (
         <div className="file-table">
@@ -796,6 +860,7 @@ function PlanConfigCard({
   outputDir,
   onChangeOutputDirectory,
 }) {
+  const isBimestral = planConfig.documentType === "planejamento_bimestral";
   return (
     <section className="panel sidebar-panel">
       <div className="panel-heading">
@@ -808,6 +873,22 @@ function PlanConfigCard({
       </div>
 
       <div className="field-row">
+        <label className="field">
+          <span>Tipo de documento</span>
+          <select
+            value={planConfig.documentType || "plano_aula"}
+            onChange={(event) =>
+              onPlanConfigChange({ documentType: event.target.value })
+            }
+          >
+            {DOCUMENT_TYPES.map((documentType) => (
+              <option key={documentType.value} value={documentType.value}>
+                {documentType.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
         <label className="field">
           <span>Professor</span>
           <input
@@ -890,20 +971,6 @@ function PlanConfigCard({
 
       <div className="field-grid">
         <label className="field">
-          <span>Quantidade de aulas</span>
-          <input
-            type="number"
-            min="1"
-            max="99"
-            value={planConfig.quantidadeAulas}
-            onChange={(event) =>
-              onPlanConfigChange({ quantidadeAulas: event.target.value })
-            }
-            placeholder="1"
-          />
-        </label>
-
-        <label className="field">
           <span>Período de</span>
           <input
             type="date"
@@ -914,16 +981,105 @@ function PlanConfigCard({
           />
         </label>
 
-        <label className="field">
-          <span>Período até</span>
-          <input
-            type="date"
-            value={planConfig.dataAte}
-            onChange={(event) =>
-              onPlanConfigChange({ dataAte: event.target.value })
-            }
-          />
-        </label>
+        {isBimestral ? (
+          <label className="field">
+            <span>Cadência</span>
+            <select
+              value={planConfig.cadencia || "semanal"}
+              onChange={(event) =>
+                onPlanConfigChange({ cadencia: event.target.value })
+              }
+            >
+              {CADENCE_OPTIONS.map((option) => (
+                <option
+                  key={option.value}
+                  value={option.value}
+                  disabled={Boolean(option.disabled)}
+                >
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <label className="field">
+            <span>Quantidade de aulas</span>
+            <input
+              type="number"
+              min="1"
+              max="99"
+              value={planConfig.quantidadeAulas}
+              onChange={(event) =>
+                onPlanConfigChange({ quantidadeAulas: event.target.value, dataAte: "" })
+              }
+              placeholder="1"
+            />
+          </label>
+        )}
+
+        {isBimestral ? (
+          <label className="field">
+            <span>Planejar por</span>
+            <select
+              value={planConfig.scheduleMode || "quantidade"}
+              onChange={(event) => {
+                const scheduleMode = event.target.value;
+                onPlanConfigChange({
+                  scheduleMode,
+                  quantidadeAulas:
+                    scheduleMode === "data_fim" ? "" : planConfig.quantidadeAulas,
+                  dataAte: scheduleMode === "quantidade" ? "" : planConfig.dataAte,
+                });
+              }}
+            >
+              {SCHEDULE_MODE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <label className="field">
+            <span>Período até</span>
+            <input
+              type="date"
+              value={planConfig.dataAte}
+              onChange={(event) =>
+                onPlanConfigChange({ dataAte: event.target.value, quantidadeAulas: "" })
+              }
+            />
+          </label>
+        )}
+
+        {isBimestral ? (
+          (planConfig.scheduleMode || "quantidade") === "quantidade" ? (
+            <label className="field">
+              <span>Quantidade de aulas</span>
+              <input
+                type="number"
+                min="1"
+                max="99"
+                value={planConfig.quantidadeAulas}
+                onChange={(event) =>
+                  onPlanConfigChange({ quantidadeAulas: event.target.value, dataAte: "" })
+                }
+                placeholder="1"
+              />
+            </label>
+          ) : (
+            <label className="field">
+              <span>Período até</span>
+              <input
+                type="date"
+                value={planConfig.dataAte}
+                onChange={(event) =>
+                  onPlanConfigChange({ dataAte: event.target.value, quantidadeAulas: "" })
+                }
+              />
+            </label>
+          )
+        ) : null}
       </div>
 
       <button className="ghost-button ghost-button-wide" onClick={onClearFields}>
@@ -948,7 +1104,7 @@ function PlanConfigCard({
 function ResultSection({ busy, status, result, onRevealOutput }) {
   const tone = getStatusTone({ busy, result, status });
   const showBanner =
-    busy || tone === "success" || tone === "warn" || tone === "error";
+    busy || Boolean(status) || tone === "success" || tone === "warn" || tone === "error";
 
   return (
     <section className="panel result-panel">
@@ -1047,16 +1203,20 @@ export default function App() {
     apiKey: "",
     model: "gpt-5.4-mini",
     fontScale: 100,
+    documentType: "plano_aula",
     professorName: "",
     defaultTemplateFileName: "",
     apiKeyConfigured: false,
   });
   const [planConfig, setPlanConfig] = useState({
+    documentType: "plano_aula",
     professor: "",
     turmas: "",
     quantidadeAulas: "",
     dataDe: "",
     dataAte: "",
+    scheduleMode: "quantidade",
+    cadencia: "semanal",
   });
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
@@ -1078,11 +1238,14 @@ export default function App() {
         setAppState(nextState);
         setSettings(nextState.settings);
         setPlanConfig({
+          documentType: nextState.settings.documentType || "plano_aula",
           professor: nextState.settings.professorName || "",
           turmas: nextState.settings.planTurmas || "",
           quantidadeAulas: nextState.settings.planQuantidadeAulas ?? "1",
           dataDe: nextState.settings.planDataDe || "",
           dataAte: nextState.settings.planDataAte || "",
+          scheduleMode: nextState.settings.planScheduleMode || "quantidade",
+          cadencia: nextState.settings.planCadencia || "semanal",
         });
       } catch (error) {
         setStatus(error.message || "Não foi possível inicializar o app.");
@@ -1129,6 +1292,52 @@ export default function App() {
     }
   }, [instructionManagerOpen, appState, settings.defaultInstructionFileName]);
 
+  useEffect(() => {
+    const documentType = planConfig.documentType || settings.documentType || "plano_aula";
+    const maxFiles = getDocumentTypeConfig(documentType).maxFiles;
+    if (!Number.isInteger(maxFiles)) {
+      return;
+    }
+    if (selectedFiles.length <= maxFiles) {
+      return;
+    }
+
+    setSelectedFiles((current) => current.slice(0, maxFiles));
+    setStatus(`O tipo "Plano de aula" aceita no máximo ${maxFiles} arquivos ativos.`);
+  }, [planConfig.documentType, selectedFiles.length, settings.documentType]);
+
+  useEffect(() => {
+    const documentType = planConfig.documentType || settings.documentType || "plano_aula";
+    const filteredInstructions = filterInstructionsByDocumentType(
+      appState?.instructions ?? [],
+      documentType,
+    );
+    const filteredTemplates = filterTemplatesByDocumentType(
+      appState?.templates ?? [],
+      documentType,
+    );
+
+    const instructionIsValid = filteredInstructions.some(
+      (instruction) => instruction.fileName === settings.defaultInstructionFileName,
+    );
+    const templateIsValid = filteredTemplates.some(
+      (template) => template.fileName === settings.defaultTemplateFileName,
+    );
+
+    if (!instructionIsValid && filteredInstructions[0]?.fileName) {
+      void handleSetDefaultInstruction(filteredInstructions[0].fileName);
+    }
+    if (!templateIsValid && filteredTemplates[0]?.fileName) {
+      void handleSetDefaultTemplate(filteredTemplates[0].fileName);
+    }
+  }, [
+    appState,
+    planConfig.documentType,
+    settings.defaultInstructionFileName,
+    settings.defaultTemplateFileName,
+    settings.documentType,
+  ]);
+
   async function handlePickFile() {
     try {
       setStatus("Abrindo seletor de arquivo...");
@@ -1147,17 +1356,21 @@ export default function App() {
       }
 
       const merged = mergeFiles(selectedFiles, picked);
-      const limited = merged.slice(0, 3);
+      const documentType = planConfig.documentType || settings.documentType || "plano_aula";
+      const documentTypeConfig = getDocumentTypeConfig(documentType);
+      const maxFiles = documentTypeConfig.maxFiles;
+      const limited = Number.isInteger(maxFiles) ? merged.slice(0, maxFiles) : merged;
       setSelectedFiles(limited);
-      if (merged.length > 3) {
+      if (Number.isInteger(maxFiles) && merged.length > maxFiles) {
         setStatus(
-          "Use no máximo 3 arquivos por plano. Os excedentes foram ignorados.",
+          `Use no máximo ${maxFiles} arquivos para plano de aula. Os excedentes foram ignorados.`,
         );
       } else {
         setStatus(`${picked.length} arquivo(s) adicionado(s).`);
       }
 
       const detected = await api.detectPlanFields?.({
+        documentType,
         inputPaths: limited
           .filter((file) => file.active)
           .map((file) => file.path),
@@ -1183,6 +1396,8 @@ export default function App() {
         quantidadeAulas: current.quantidadeAulas ?? saved.planQuantidadeAulas ?? "1",
         dataDe: current.dataDe || saved.planDataDe || "",
         dataAte: current.dataAte || saved.planDataAte || "",
+        scheduleMode: current.scheduleMode || saved.planScheduleMode || "quantidade",
+        cadencia: current.cadencia || saved.planCadencia || "semanal",
       }));
       setFontScalePreview(null);
       setModalOpen(false);
@@ -1216,11 +1431,15 @@ export default function App() {
     try {
       const saved = await getPlanoLeveApi().saveSettings({
         ...settings,
+        documentType: String(nextConfig.documentType || "plano_aula").trim() || "plano_aula",
         professorName: String(nextConfig.professor || "").trim(),
         planTurmas: String(nextConfig.turmas || "").trim(),
         planQuantidadeAulas: String(nextConfig.quantidadeAulas ?? "").trim(),
         planDataDe: String(nextConfig.dataDe || "").trim(),
         planDataAte: String(nextConfig.dataAte || "").trim(),
+        planScheduleMode:
+          String(nextConfig.scheduleMode || "quantidade").trim() || "quantidade",
+        planCadencia: String(nextConfig.cadencia || "semanal").trim() || "semanal",
       });
       setSettings(saved);
     } catch (error) {
@@ -1424,6 +1643,9 @@ export default function App() {
   }
 
   async function handleGenerate() {
+    const documentType = planConfig.documentType || "plano_aula";
+    const isBimestral = documentType === "planejamento_bimestral";
+    const scheduleMode = planConfig.scheduleMode || "quantidade";
     const inputPaths = selectedFiles
       .filter((file) => file.active)
       .map((file) => file.path);
@@ -1432,23 +1654,55 @@ export default function App() {
       setStatus("Selecione pelo menos um arquivo .pptx antes de gerar.");
       return;
     }
+    if (isBimestral && !String(planConfig.dataDe || "").trim()) {
+      setStatus("No planejamento bimestral, informe a data inicial em 'Período de'.");
+      return;
+    }
+    if (
+      isBimestral &&
+      scheduleMode === "quantidade" &&
+      !(Number(planConfig.quantidadeAulas) > 0)
+    ) {
+      setStatus("Informe uma quantidade de aulas válida (maior que zero).");
+      return;
+    }
+    if (
+      isBimestral &&
+      scheduleMode === "data_fim" &&
+      !String(planConfig.dataAte || "").trim()
+    ) {
+      setStatus("No modo por data final, informe o campo 'Período até'.");
+      return;
+    }
 
     setBusy(true);
-    setStatus("Gerando plano de aula com IA...");
+    setStatus(
+      documentType === "planejamento_bimestral"
+        ? "Gerando planejamento bimestral com IA..."
+        : "Gerando plano de aula com IA...",
+    );
     setResult(null);
 
     try {
       await persistPlanConfig(planConfig);
       const api = getPlanoLeveApi();
+      const dataAte = isBimestral
+        ? scheduleMode === "data_fim"
+          ? planConfig.dataAte
+          : ""
+        : planConfig.dataAte || planConfig.dataDe;
       const generation =
         (await api.generatePlans?.({
+          documentType,
           inputPaths,
           outputConfig: {
             professor: planConfig.professor,
             turmas: planConfig.turmas,
             quantidadeAulas: planConfig.quantidadeAulas,
             dataDe: planConfig.dataDe,
-            dataAte: planConfig.dataAte || planConfig.dataDe,
+            dataAte,
+            scheduleMode: planConfig.scheduleMode || "quantidade",
+            cadencia: planConfig.cadencia || "semanal",
           },
         })) ??
         (() => {
@@ -1458,9 +1712,14 @@ export default function App() {
         })();
       setResult(generation);
       if ((generation.failedCount ?? 0) === 0) {
-        setStatus("Plano de aula gerado com sucesso.");
+        setStatus(
+          documentType === "planejamento_bimestral"
+            ? "Planejamento bimestral gerado com sucesso."
+            : "Plano de aula gerado com sucesso.",
+        );
       } else if ((generation.count ?? 0) === 0) {
-        setStatus("Nenhum plano foi gerado.");
+        const firstFailureMessage = generation.failures?.[0]?.message;
+        setStatus(firstFailureMessage || "Nenhum plano foi gerado.");
       } else {
         setStatus("Plano gerado com alertas.");
       }
@@ -1530,7 +1789,9 @@ export default function App() {
     try {
       await getPlanoLeveApi().resetBuiltInTemplates();
       await refreshState();
-      setStatus("Templates padrão restaurados: modelo com âncoras, Bertioga e José da Costa.");
+      setStatus(
+        "Templates padrão restaurados: modelo com âncoras, Bertioga, José da Costa e Planejamento Bimestral Bertioga.",
+      );
     } catch (error) {
       setStatus(error.message || "Não foi possível restaurar os templates padrão.");
     }
@@ -1543,14 +1804,27 @@ export default function App() {
       quantidadeAulas: "",
       dataDe: "",
       dataAte: "",
+      scheduleMode: "quantidade",
+      cadencia: "semanal",
     });
     setStatus("Campos da configuração limpos.");
   }
 
-  const apiReady = settings.apiKeyConfigured || Boolean(settings.apiKey);
-  const availableInstructions = appState?.instructions ?? [];
+  const activeDocumentType = planConfig.documentType || settings.documentType || "plano_aula";
+  const availableInstructions = filterInstructionsByDocumentType(
+    appState?.instructions ?? [],
+    activeDocumentType,
+  );
+  const availableTemplates = filterTemplatesByDocumentType(
+    appState?.templates ?? [],
+    activeDocumentType,
+  );
   const activeCount = selectedFiles.filter((file) => file.active).length;
-  const canGenerate = activeCount > 0 && activeCount <= 3 && !busy && apiReady;
+  const maxFiles = getDocumentTypeConfig(activeDocumentType).maxFiles;
+  const canGenerate =
+    activeCount > 0 &&
+    (!Number.isInteger(maxFiles) || activeCount <= maxFiles) &&
+    !busy;
 
   return (
     <div className="app-shell">
@@ -1564,6 +1838,7 @@ export default function App() {
 
         <SourcesCard
           files={selectedFiles}
+          documentType={activeDocumentType}
           onToggleActive={(targetPath) =>
             setSelectedFiles((current) =>
               current.map((file) =>
@@ -1591,7 +1866,7 @@ export default function App() {
           onSelectDefaultInstruction={handleSetDefaultInstruction}
           onOpenManager={() => setInstructionManagerOpen(true)}
           defaultTemplateFileName={settings.defaultTemplateFileName}
-          availableTemplates={appState?.templates ?? []}
+          availableTemplates={availableTemplates}
           onSetDefaultTemplate={handleSetDefaultTemplate}
           onOpenTemplateManager={() => setTemplateManagerOpen(true)}
           outputDir={appState?.projectPaths?.saidasDir}
@@ -1627,8 +1902,6 @@ export default function App() {
         onSave={handleSaveSettings}
         onPreviewFontScale={setFontScalePreview}
         onChangeDirectory={handleChangeDirectory}
-        onPickTemplate={handlePickTemplate}
-        onSetDefaultTemplate={handleSetDefaultTemplate}
       />
       <InstructionManagerModal
         open={instructionManagerOpen}
@@ -1668,7 +1941,7 @@ export default function App() {
       />
       <TemplateManagerModal
         open={templateManagerOpen}
-        templates={appState?.templates ?? []}
+        templates={availableTemplates}
         defaultTemplateFileName={settings.defaultTemplateFileName}
         onClose={() => setTemplateManagerOpen(false)}
         onSelectDefault={handleSetDefaultTemplate}

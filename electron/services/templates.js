@@ -5,7 +5,8 @@ export const DEFAULT_TEMPLATE_FILE_NAME = "plano-de-aula-template-com-ancoras.do
 export const BUILT_IN_TEMPLATE_FILE_NAMES = [
   DEFAULT_TEMPLATE_FILE_NAME,
   "Plano de Aula - Bertioga.docx",
-  "Plano de Aula - José da Costa.docx"
+  "Plano de Aula - José da Costa.docx",
+  "Planejamento - Bertioga - Bimestral.docx"
 ];
 
 function sanitizeTemplateFileName(fileName) {

@@ -48,6 +48,17 @@ function cloneNodeDeep(node) {
   return node ? node.cloneNode(true) : null;
 }
 
+function replaceTextWithMap(text, replacements) {
+  let next = String(text ?? "");
+  for (const [placeholder, value] of Object.entries(replacements || {})) {
+    if (typeof value !== "string") {
+      continue;
+    }
+    next = next.replaceAll(placeholder, value);
+  }
+  return next;
+}
+
 function setParagraphText(document, paragraph, nextText) {
   const paragraphProps = elementChildren(paragraph, "pPr")[0] ?? null;
   const firstRun = elementChildren(paragraph, "r")[0] ?? null;
@@ -82,16 +93,73 @@ function setParagraphText(document, paragraph, nextText) {
   paragraph.appendChild(run);
 }
 
+function applyRowReplacementsOnRow(document, rowNode, rowReplacementMap) {
+  const paragraphs = Array.from(rowNode.getElementsByTagNameNS(WORD_NS, "p"));
+  for (const paragraph of paragraphs) {
+    const textNodes = getTextNodes(paragraph);
+    if (textNodes.length === 0) {
+      continue;
+    }
+
+    const combined = textNodes.map((node) => node.textContent ?? "").join("");
+    const nextText = replaceTextWithMap(combined, rowReplacementMap);
+
+    if (nextText !== combined) {
+      setParagraphText(document, paragraph, nextText);
+    }
+  }
+}
+
+function applyTableRows(document, tableRows) {
+  if (!Array.isArray(tableRows) || tableRows.length === 0) {
+    return;
+  }
+
+  const rowPlaceholderKeys = Object.keys(tableRows[0] || {});
+  if (rowPlaceholderKeys.length === 0) {
+    return;
+  }
+
+  const rows = Array.from(document.getElementsByTagNameNS(WORD_NS, "tr"));
+  const templateRow = rows.find((row) => {
+    const rowText = getNodeText(row);
+    return rowPlaceholderKeys.some((placeholder) => rowText.includes(placeholder));
+  });
+
+  if (!templateRow || !templateRow.parentNode) {
+    return;
+  }
+
+  const parent = templateRow.parentNode;
+
+  if (tableRows.length === 0) {
+    parent.removeChild(templateRow);
+    return;
+  }
+
+  for (const rowReplacementMap of tableRows) {
+    const nextRow = templateRow.cloneNode(true);
+    applyRowReplacementsOnRow(document, nextRow, rowReplacementMap);
+    parent.insertBefore(nextRow, templateRow);
+  }
+
+  parent.removeChild(templateRow);
+}
+
 export async function fillTemplate({
   templatePath,
   outputPath,
-  replacements
+  replacements,
+  tableRows
 }) {
   const extractedDir = await extractOfficeArchive(templatePath, "plano-leve-docx");
   const documentXmlPath = path.join(extractedDir, "word", "document.xml");
   const xml = await fs.readFile(documentXmlPath, "utf8");
 
   const document = new DOMParser().parseFromString(xml, "application/xml");
+
+  applyTableRows(document, tableRows);
+
   const paragraphs = Array.from(document.getElementsByTagNameNS(WORD_NS, "p"));
 
   for (const paragraph of paragraphs) {
@@ -101,16 +169,12 @@ export async function fillTemplate({
     }
 
     const combined = textNodes.map((node) => node.textContent ?? "").join("");
-    let nextText = combined;
-
-    for (const [placeholder, value] of Object.entries(replacements)) {
-      nextText = nextText.replaceAll(placeholder, value);
-    }
+    let nextText = replaceTextWithMap(combined, replacements);
 
     const tableCell = findAncestor(paragraph, "tc");
     const cellText = tableCell ? getNodeText(tableCell) : "";
     if (cellText.includes("Quantidade de Aulas:") && combined.includes("{{AVALIACAO}}")) {
-      nextText = nextText.replaceAll(replacements["{{AVALIACAO}}"], replacements["{{QTD_AULAS}}"]);
+      nextText = nextText.replaceAll(replacements["{{AVALIACAO}}"], replacements["{{QTD_AULAS}}"]); 
     }
 
     if (combined.trim() === "´") {
