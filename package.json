@@ -77,7 +77,8 @@
         "provider": "github",
         "owner": "saulocastillos",
         "repo": "plano-aula-leve",
-        "private": true
+        "private": true,
+        "releaseType": "release"
       }
     ],
     "electronUpdaterCompatibility": ">=2.16"
