@@ -14,7 +14,14 @@ export default defineConfig({
     react(),
     electron([
       {
-        entry: "electron/main.js"
+        entry: "electron/main.js",
+        vite: {
+          build: {
+            rollupOptions: {
+              external: ["electron-updater"]
+            }
+          }
+        }
       }
     ]),
     renderer()

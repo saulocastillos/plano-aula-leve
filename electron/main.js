@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
+import electronUpdater from "electron-updater";
 import { extractPptxText } from "./services/pptx.js";
 import { fillTemplate } from "./services/docx-template.js";
 import { improveInstruction } from "./services/instruction-assistant.js";
@@ -30,6 +31,7 @@ import {
   resetBuiltInTemplates
 } from "./services/templates.js";
 
+const { autoUpdater } = electronUpdater;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const settingsFileName = "settings.json";
@@ -37,6 +39,8 @@ const DEFAULT_DOCUMENT_TYPE = "plano_aula";
 const LIMITED_DOCUMENT_TYPES = new Set(["plano_aula"]);
 const DEFAULT_CADENCE = "semanal";
 const DEFAULT_SCHEDULE_MODE = "quantidade";
+const UPDATE_CHECK_DELAY_MS = 2500;
+const UPDATE_POLL_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 function sanitizeDocumentType(value) {
   const normalized = String(value || "").trim();
@@ -893,6 +897,92 @@ async function createMainWindow() {
   }
 }
 
+function getActiveWindow() {
+  return BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0] || null;
+}
+
+function setupAutoUpdate() {
+  if (!app.isPackaged || process.platform !== "win32") {
+    return;
+  }
+
+  if (!process.env.GH_TOKEN) {
+    console.warn("[updater] GH_TOKEN não configurado; auto-update do repositório privado está desativado.");
+    return;
+  }
+
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on("error", (error) => {
+    const reason = error instanceof Error ? error.message : String(error || "erro desconhecido");
+    console.error("[updater] Falha no auto-update:", reason);
+  });
+
+  autoUpdater.on("update-available", async (info) => {
+    try {
+      const window = getActiveWindow() || undefined;
+      const { response } = await dialog.showMessageBox(window, {
+        type: "info",
+        buttons: ["Baixar agora", "Depois"],
+        defaultId: 0,
+        cancelId: 1,
+        title: "Atualização disponível",
+        message: `Uma nova versão (${info?.version || "nova"}) está disponível.`,
+        detail: "Deseja baixar a atualização agora?"
+      });
+
+      if (response === 0) {
+        await autoUpdater.downloadUpdate();
+      }
+    } catch (error) {
+      const reason =
+        error instanceof Error ? error.message : String(error || "erro desconhecido");
+      console.error("[updater] Não foi possível abrir diálogo de atualização:", reason);
+    }
+  });
+
+  autoUpdater.on("update-downloaded", async (info) => {
+    try {
+      const window = getActiveWindow() || undefined;
+      const { response } = await dialog.showMessageBox(window, {
+        type: "info",
+        buttons: ["Reiniciar agora", "Depois"],
+        defaultId: 0,
+        cancelId: 1,
+        title: "Atualização pronta",
+        message: `A versão ${info?.version || "mais recente"} foi baixada.`,
+        detail: "O aplicativo precisa reiniciar para concluir a atualização."
+      });
+
+      if (response === 0) {
+        autoUpdater.quitAndInstall();
+      }
+    } catch (error) {
+      const reason =
+        error instanceof Error ? error.message : String(error || "erro desconhecido");
+      console.error("[updater] Não foi possível abrir diálogo de reinício:", reason);
+    }
+  });
+
+  setTimeout(() => {
+    autoUpdater.checkForUpdates().catch((error) => {
+      const reason =
+        error instanceof Error ? error.message : String(error || "erro desconhecido");
+      console.error("[updater] Falha ao verificar atualizações:", reason);
+    });
+  }, UPDATE_CHECK_DELAY_MS);
+
+  const updateTimer = setInterval(() => {
+    autoUpdater.checkForUpdates().catch((error) => {
+      const reason =
+        error instanceof Error ? error.message : String(error || "erro desconhecido");
+      console.error("[updater] Falha ao verificar atualizações:", reason);
+    });
+  }, UPDATE_POLL_INTERVAL_MS);
+  updateTimer.unref?.();
+}
+
 ipcMain.handle("app:get-state", async () => {
   let settings = await readSettings();
   const projectPaths = getProjectPaths(settings);
@@ -925,6 +1015,7 @@ ipcMain.handle("app:get-state", async () => {
   );
 
   return {
+    appVersion: app.getVersion(),
     projectPaths,
     settings: {
       ...settings,
@@ -1369,6 +1460,7 @@ ipcMain.handle("files:clear-inputs", async () => {
 
 app.whenReady().then(async () => {
   await createMainWindow();
+  setupAutoUpdate();
 
   app.on("activate", async () => {
     if (BrowserWindow.getAllWindows().length === 0) {

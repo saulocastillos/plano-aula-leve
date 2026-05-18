@@ -67,6 +67,16 @@ button {
   font-size: 1.75rem;
 }
 
+.app-version-label {
+  font-family: "Aptos", "Segoe UI", sans-serif;
+  font-size: 0.75em;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--muted);
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
 .panel {
   background: var(--paper);
   border: 1px solid var(--outline);

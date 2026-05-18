@@ -1825,12 +1825,15 @@ export default function App() {
     activeCount > 0 &&
     (!Number.isInteger(maxFiles) || activeCount <= maxFiles) &&
     !busy;
+  const appVersion = appState?.appVersion || "dev";
 
   return (
     <div className="app-shell">
       <main className="main-layout">
         <header className="topbar-minimal">
-          <h1>🪶 Plano de Aula Leve</h1>
+          <h1>
+            🪶 Plano de Aula Leve <span className="app-version-label">v{appVersion}</span>
+          </h1>
           <button className="ghost-button" onClick={() => setModalOpen(true)}>
             Ajustes
           </button>

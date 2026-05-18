@@ -13,6 +13,7 @@
     "clean": "rm -rf node_modules package-lock.json && npm i"
   },
   "dependencies": {
+    "electron-updater": "^6.6.2",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },
@@ -70,6 +71,15 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "perMachine": false
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "saulocastillos",
+        "repo": "plano-aula-leve",
+        "private": true
+      }
+    ],
+    "electronUpdaterCompatibility": ">=2.16"
   }
 }
